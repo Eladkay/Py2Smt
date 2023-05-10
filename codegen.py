@@ -5,8 +5,8 @@ from typing import Tuple, Union, List, Type
 
 from z3 import IntSort, DatatypeSortRef, BoolSort, ArraySortRef, StringSort, SeqSortRef, z3
 
-from py2smt.cfg import ControlFlowGraph, ControlFlowNode, Label
-from py2smt.symbolic_interp import Signature
+from cfg import ControlFlowGraph, ControlFlowNode, Label
+from symbolic_interp import Signature
 
 
 ops = {ast.Add: '+', ast.Sub: '-', ast.Mult: '*', ast.Div: '/', ast.FloorDiv: "/", ast.Mod: '%',
@@ -33,7 +33,7 @@ def _syntactic_receiver_replace(transformed: AST, name: str, receiver: Union[Non
         def visit_Name(self, node):
             if isinstance(node.id, str) and node.id == f"{name}_self":
                 if receiver is None:
-                    raise ValueError("Called member function without receiver.")
+                    raise ValueError(f"Called member function {name} without receiver.")
                 return Name(receiver)
             return node
 

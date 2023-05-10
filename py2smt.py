@@ -7,9 +7,9 @@ from typing import *
 
 from z3 import z3, DatatypeSortRef, IntSort, BoolSort, StringSort, ArraySort, SetSort, SortRef
 
-from py2smt.symbolic_interp import Signature, State
-from py2smt import stdlib
-from py2smt.cfg import ControlFlowGraph
+from symbolic_interp import Signature, State
+import stdlib
+from cfg import ControlFlowGraph
 
 
 class MethodObject:
@@ -41,7 +41,7 @@ class MethodObject:
     def cfg(self) -> ControlFlowGraph:
         if self._cfg is None:
             self._cfg = ControlFlowGraph(self.system, self.ast.body[0].name, self.cls)
-            from py2smt import codegen
+            import codegen
             codegen.process_all(self.ast, self._cfg)
             self._cfg.clean_cfg()
 

@@ -5,7 +5,7 @@ from typing import Callable, Tuple, List, Any, Type
 
 from z3 import *
 
-from py2smt.symbolic_interp import State, Signature
+from symbolic_interp import State, Signature
 
 
 @dataclass

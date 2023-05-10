@@ -1,8 +1,8 @@
 import typing
 import unittest
 
-from py2smt.py2smt import Py2Smt
-from py2smt.tests.smt_test_case import SmtTestCase
+from py2smt import Py2Smt
+from tests.smt_test_case import SmtTestCase
 from z3 import *
 
 # noinspection PyMethodMayBeStatic
