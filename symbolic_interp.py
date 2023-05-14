@@ -7,7 +7,7 @@ from collections import OrderedDict
 class Signature:
     def __init__(self, decls: typing.Union[dict, List[Tuple[str, Any]]]):
         self.decls = OrderedDict((name, self.parse_type(ty))
-                                 for (name, ty) in (decls.items() if isinstance(decls, dict) else decls))
+                                 for (name, ty) in decls.items())
         self.middleware = []
 
     def variable_names(self) -> List[str]:
