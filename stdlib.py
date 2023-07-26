@@ -38,6 +38,11 @@ def str_replace(s: str, old: str, new: str) -> str:
     return Replace(s, old, new)
 
 
-def fail():
-    while True:
-        pass
+def ValueError():
+    pass
+
+def TypeError():
+    pass
+
+def Exception():
+    pass

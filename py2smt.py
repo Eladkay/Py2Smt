@@ -16,14 +16,17 @@ from cfg import ControlFlowGraph
 class MethodObject:
 
     @staticmethod
-    def get_from_method(method: Callable, system: 'Py2Smt', cls: Type = None) -> 'MethodObject':
+    def get_from_method(method: Callable, system: 'Py2Smt', cls: Union[Type, None] = None) -> 'MethodObject':
+        cls = cls if cls else vars(sys.modules[method.__module__])[method.__qualname__.split('.')[0]]
+        if not isinstance(cls, Type):
+            cls = None
         return MethodObject(method.__name__,
                             ast.parse(dedent(inspect.getsource(method))),
                             inspect.getfullargspec(method).args,
-                            cls if cls else vars(sys.modules[method.__module__])[method.__qualname__.split('.')[0]],
+                            cls,
                             system)
 
-    def __init__(self, name: str, tree: AST, args: List[str], cls: Type, system: 'Py2Smt'):
+    def __init__(self, name: str, tree: AST, args: List[str], cls: Union[Type, None], system: 'Py2Smt'):
         self.system = system
         self.name = name
         self.ast = tree

@@ -100,6 +100,13 @@ class BasicTest:
         d: typing.Dict[int, typing.List[int]] = {1: [1, 2, 3]}
         return d[1][1]
 
+    def raise_(self, param: int):
+        if param == 1:
+            raise ValueError()
+
+    def assert_(self, param: int):
+        assert param != 1
+
 
 class Py2SmtBasicTests(SmtTestCase):
 
@@ -256,6 +263,26 @@ class Py2SmtBasicTests(SmtTestCase):
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 2)
+
+    def test_raise_(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("raise_")
+        self.assertEqual(entry.args, ["self", "param"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        error_condition = entry.cfg.get_error_condition()(state0, state1)
+        self.assertImplies(tr, state0.eval("param") != 1)
+        self.assertImplies(error_condition, state0.eval("param") == 1)
+
+    def test_assert_(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("assert_")
+        self.assertEqual(entry.args, ["self", "param"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        error_condition = entry.cfg.get_error_condition()(state0, state1)
+        self.assertImplies(tr, state0.eval("param") != 1)
+        self.assertImplies(error_condition, state0.eval("param") == 1)
 
 
 if __name__ == '__main__':

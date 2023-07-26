@@ -29,22 +29,27 @@ class BreakContinueCodeGenerator(AbstractCodeGenerator):
         return DecoratedControlNode(name, tree, node, self.graph.fresh_label())
 
 
-# todo: I want to add an "exception state" node to the graph
-# @handles(_ast.Raise)
-# class RaiseCodeGenerator(AbstractCodeGenerator):
-#
-#     def process_node(self, tree: AST) -> DecoratedAst:
-        # id = ast.Name(id=graph.return_var)
-        # id.data = process(id, graph)
-        # nondet_name = ast.Name(id="nondet")
-        # nondet_name.data = process(nondet_name, graph)
-        # call = ast.Call(func=nondet_name, args=[], keywords=[])
-        # call.data = process(call, graph)
-        # new_node = ast.Assign(targets=[id], value=call)
-        # new_node.data = process(new_node, graph)
-        # graph.bp(new_node.data["end"], graph.end)
-        # return {"type": "raise", "start": new_node.data["start"], "end": new_node.data["end"]}
-        # return NotImplemented  # todo
+@handles(_ast.Raise)
+class RaiseCodeGenerator(AbstractCodeGenerator):
+
+    def process_node(self, tree: AST) -> DecoratedControlNode:
+        node = self.graph.add_node("raise")
+        self.graph.add_edge(node, self.graph.error)
+        return DecoratedControlNode("raise", tree, node, self.graph.fresh_label())
+
+
+@handles(_ast.Assert)
+class AssertCodeGenerator(AbstractCodeGenerator):
+
+    def process_node(self, tree: AST) -> DecoratedControlNode:
+        test_decorated = self._process_expect_data(tree.test)
+        test_start, test_end, test_place = test_decorated.start_node, test_decorated.end_label, test_decorated.place
+        label = self.graph.fresh_label()
+        node = self.graph.add_node(f"assert {test_place}")
+        self.graph.add_edge(test_end, node)
+        self.graph.add_edge(node, self.graph.error, f"s.assume('{test_place}')")
+        self.graph.add_edge(node, label, f"s.assume('Not({test_place})')")
+        return DecoratedControlNode(f"assert {test_place}", tree, test_start, label)
 
 
 @handles(_ast.While)
@@ -105,4 +110,4 @@ class IfCodeGenerator(AbstractCodeGenerator):
         else:
             self.graph.add_edge(new_node, next_label, f"s.assume('Not({test_place}"f")')")
 
-        return DecoratedControlNode(f"if {test_place}", node, new_node, next_label)
+        return DecoratedControlNode(f"if {test_place}", node, test_start, next_label)

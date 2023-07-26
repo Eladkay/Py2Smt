@@ -32,22 +32,10 @@ class Label:
 
 
 @dataclass
-class ActionPlaceholder:
-    index: int
-    compute: Callable
-
-    def __str__(self):
-        return f"Action#{self.index}"
-
-    def __hash__(self):
-        return hash(str(self))
-
-
-@dataclass
 class ControlFlowEdge:
     source: typing.Union[Label, ControlFlowNode]
     target: typing.Union[Label, ControlFlowNode]
-    action: typing.Union[str, ActionPlaceholder]
+    action: str
 
     def perform_action(self, s: State):  # todo: refactor to remove the use of eval
         return eval(self.action)  # uses s internally
@@ -75,12 +63,13 @@ class ControlFlowGraph:
         self.end_label = self.fresh_label()
         self.add_edge(self.end, self.end_label)
 
+        self.error = self.add_node("error")
+
         self.break_label = None
         self.continue_label = None
 
         self.types = {}
-        if isinstance(cls, Type):
-            self.report_type("self", cls)
+        self.report_type("self", cls)
 
         self.return_var = None
 
@@ -167,15 +156,10 @@ class ControlFlowGraph:
         return new_nodes[other.start], new_end_label
 
     def add_edge(self, src: typing.Union[Label, ControlFlowNode], dst: typing.Union[Label, ControlFlowNode],
-                 action: typing.Union[ActionPlaceholder, str] = "s"):
+                 action: str = "s"):
         edge = ControlFlowEdge(src, dst, action)
         self.edges.add(edge)
         return edge
-
-    def add_action_placeholder(self, function: Callable) -> ActionPlaceholder:
-        action = ActionPlaceholder(len(self.actions), function)
-        self.actions.add(action)
-        return action
 
     def fresh_label(self):
         label = Label(len(self.labels))
@@ -241,6 +225,9 @@ class ControlFlowGraph:
 
     def get_transition_relation(self, depth_bound: int = 100) -> Callable[[State, State], ExprRef]:
         return self.get_transition_relation_until(self.end, depth_bound)
+
+    def get_error_condition(self, depth_bound: int = 100) -> Callable[[State, State], ExprRef]:
+        return self.get_transition_relation_until(self.error, depth_bound)
 
     def fresh_var(self, typ: typing.Any, prefix: str = "var") -> str:
         ControlFlowGraph.var_count += 1
@@ -313,26 +300,6 @@ class ControlFlowGraph:
         sig = Signature(self.types)
         sig.use({str(ty): ty for k, ty in self.system.class_types.items()})
         return sig
-
-    def compute_actions(self):
-        # BFS on the graph
-        to_visit = [self.start]
-        visited = set()
-        while to_visit:
-            node = to_visit.pop()
-            if node in visited:
-                continue
-            visited.add(node)
-            for edge in self.edges:
-                if edge.source == node:
-                    edge.action = ControlFlowGraph._compute_action(edge)
-                    to_visit.append(edge.target)
-
-    @staticmethod
-    def _compute_action(edge: ControlFlowEdge) -> str:
-        if isinstance(edge.action, str):
-            return edge.action
-        return edge.action.compute()
 
     def has_type(self, expr: Any) -> bool:
         return expr is not None and ControlFlowGraph.get_literal_type(expr) is not None or \
