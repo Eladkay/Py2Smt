@@ -46,3 +46,6 @@ def TypeError():
 
 def Exception():
     pass
+
+def range():
+    pass

@@ -46,9 +46,9 @@ class AssertCodeGenerator(AbstractCodeGenerator):
         test_start, test_end, test_place = test_decorated.start_node, test_decorated.end_label, test_decorated.place
         label = self.graph.fresh_label()
         node = self.graph.add_node(f"assert {test_place}")
-        self.graph.add_edge(test_end, node)
-        self.graph.add_edge(node, self.graph.error, f"s.assume('{test_place}')")
-        self.graph.add_edge(node, label, f"s.assume('Not({test_place})')")
+        self.graph.bp(test_end, node)
+        self.graph.add_edge(node, label, f"s.assume('{test_place}')")
+        self.graph.add_edge(node, self.graph.error, f"s.assume('Not({test_place})')")
         return DecoratedControlNode(f"assert {test_place}", tree, test_start, label)
 
 

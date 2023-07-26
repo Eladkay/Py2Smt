@@ -107,6 +107,26 @@ class BasicTest:
     def assert_(self, param: int):
         assert param != 1
 
+    def for_range(self) -> int:
+        x = 0
+        for i in range(10):
+            x += i
+        return x
+
+    def for_range_and_bmc(self) -> int:
+        x = 0
+        for i in range(10):
+            x += i
+        assert x == 45
+        return x
+
+    def for_variable_range(self, param: int) -> int:
+        assert param > 0
+        x = 0
+        for i in range(param):
+            x += i
+        return x
+
 
 class Py2SmtBasicTests(SmtTestCase):
 
@@ -283,6 +303,36 @@ class Py2SmtBasicTests(SmtTestCase):
         error_condition = entry.cfg.get_error_condition()(state0, state1)
         self.assertImplies(tr, state0.eval("param") != 1)
         self.assertImplies(error_condition, state0.eval("param") == 1)
+
+    def test_for_range(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("for_range")
+        self.assertEqual(entry.args, ["self"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 45)
+
+    def test_for_range_and_bmc(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("for_range_and_bmc")
+        self.assertEqual(entry.args, ["self"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 45)
+        error_condition = entry.cfg.get_error_condition()(state0, state1)
+        self.assertUnsat(error_condition)
+
+    def test_for_variable_range(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("for_variable_range")
+        self.assertEqual(entry.args, ["self", "param"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        param = state0.eval("param")
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == param * (param + 1) / 2)
 
 
 if __name__ == '__main__':

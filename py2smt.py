@@ -122,7 +122,7 @@ class Py2Smt:
                 return self.methods[(cls, method)]
         if name in [cls.__name__ for cls in self.classes]:
             return self.methods[(name, f"__init__")]
-        raise ValueError(f"Method {f'{typ}.' if type is not None else ''}{name} not represented")
+        raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
 
     def has_entry(self, name: str, typ: Union[Type, DatatypeSortRef, str, None] = None) -> bool:
         try:

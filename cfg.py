@@ -142,8 +142,8 @@ class ControlFlowGraph:
         assert isinstance(new_type, SortRef)
         self.types[var] = new_type
 
-    def add_node(self, label: str) -> ControlFlowNode:
-        node = ControlFlowNode(len(self.nodes), label)
+    def add_node(self, name: str) -> ControlFlowNode:
+        node = ControlFlowNode(len(self.nodes), name)
         self.nodes.add(node)
         return node
 
@@ -155,8 +155,9 @@ class ControlFlowGraph:
         self.add_edge(new_nodes[other.end], new_end_label)
         return new_nodes[other.start], new_end_label
 
-    def add_edge(self, src: typing.Union[Label, ControlFlowNode], dst: typing.Union[Label, ControlFlowNode],
+    def add_edge(self, src: ControlFlowNode, dst: typing.Union[Label, ControlFlowNode],
                  action: str = "s"):
+        assert not isinstance(src, Label)
         edge = ControlFlowEdge(src, dst, action)
         self.edges.add(edge)
         return edge

@@ -1,12 +1,12 @@
 import ast
-from _ast import AST
+from _ast import AST, expr
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Type, Union, List, Any, NoReturn
+from typing import Type, Union, List, NoReturn, Callable
 
 from cfg import ControlFlowGraph, ControlFlowNode, Label
 from common import Py2SmtException
-
+from copy import deepcopy
 
 node_types = defaultdict(list)
 
@@ -57,6 +57,7 @@ class CodeGenerationDispatcher:
         import generators.expression_generators
         import generators.statement_generators
         import generators.misc_generators
+        import generators.for_loop_generators
         self.generators = {k: [it(self) for it in v] for k, v in node_types.items()}
 
     def _postorder(self, tree: AST):
@@ -135,5 +136,12 @@ class AbstractCodeGenerator:
         raise Py2SmtException(f"type error: {message}")
 
 
-def checked_cast(ty: Type, value: Any) -> Any:
-    assert isinstance(ty, value), f"Expected {ty}, got {type(value)}"
+def syntactic_replace(name: str, value: expr, tree: AST, action: Callable = (lambda: 0)) -> AST:
+    class SynReplace(ast.NodeTransformer):
+        def visit_Name(self, node):
+            if node.id == name:
+                action()
+                return value
+            return node
+
+    return SynReplace().visit(deepcopy(tree))

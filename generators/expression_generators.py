@@ -10,7 +10,7 @@ import smt_helper
 from cfg import ControlFlowGraph
 from generators import misc_generators
 from generators.generators import AbstractCodeGenerator, handles, \
-    DecoratedDataNode, CodeGenerationDispatcher
+    DecoratedDataNode, CodeGenerationDispatcher, syntactic_replace
 from smt_helper import *
 from symbolic_interp import Signature
 
@@ -22,12 +22,10 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
         new_node = self.graph.add_node(f"pass")
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label)
-        if isinstance(node.value, bool):
-            val = "BoolVal(True)" if node.value else "BoolVal(False)"
-        elif isinstance(node.value, int):
-            val = f"IntVal({node.value})"
-        elif isinstance(node.value, str):
+        if isinstance(node.value, str):
             val = f"\\\"{node.value}\\\"" if isinstance(node.value, str) else node.value
+        else:
+            val = node.value
         return DecoratedDataNode("const", node, new_node, new_label, val)
 
 
@@ -221,25 +219,16 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
     @staticmethod
     def _syntactic_param_replace(transformed: AST, args: List[str], exprs: List[_ast.expr]) -> AST:
-        class RewriteArgs(ast.NodeTransformer):
-            def visit_Name(self, node):
-                if node.id in args:
-                    return exprs[args.index(node.id)]
-                return node
-
-        return RewriteArgs().visit(transformed)
+        for arg, expr in zip(args, exprs):
+            transformed = syntactic_replace(arg, expr, transformed)
+        return transformed
 
     @staticmethod
     def _syntactic_receiver_replace(transformed: AST, name: str, receiver: Union[None, str]) -> AST:
-        class RewriteReceiver(ast.NodeTransformer):
-            def visit_Name(self, node):
-                if isinstance(node.id, str) and node.id == f"{name}_self":
-                    if receiver is None:
-                        raise ValueError(f"Called member function {name} without receiver.")
-                    return _ast.Name(receiver)
-                return node
-
-        return RewriteReceiver().visit(transformed)
+        def check_receiver():
+            if receiver is None:
+                raise ValueError(f"Called member function {name} without receiver.")
+        return syntactic_replace(f"{name}_self", _ast.Name(receiver), transformed, check_receiver)
 
     def process_node(self, node: AST) -> DecoratedDataNode:
         name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr
