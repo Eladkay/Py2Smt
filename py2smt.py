@@ -7,6 +7,7 @@ from typing import *
 
 from z3 import z3, DatatypeSortRef, IntSort, BoolSort, StringSort, ArraySort, SetSort, SortRef
 
+from generators.generators import CodeGenerationDispatcher
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -30,6 +31,7 @@ class MethodObject:
         self.cls = cls
         self._sig = None
         self._cfg = None
+        self._dispatcher = None
 
     @property
     def sig(self) -> Signature:
@@ -41,8 +43,8 @@ class MethodObject:
     def cfg(self) -> ControlFlowGraph:
         if self._cfg is None:
             self._cfg = ControlFlowGraph(self.system, self.ast.body[0].name, self.cls)
-            import codegen
-            codegen.process_all(self.ast, self._cfg)
+            self._dispatcher = CodeGenerationDispatcher(self.cfg)
+            self._dispatcher.compute_graph(self.ast)
             self._cfg.clean_cfg()
 
         return self._cfg

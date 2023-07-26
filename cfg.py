@@ -49,7 +49,7 @@ class ControlFlowEdge:
     target: typing.Union[Label, ControlFlowNode]
     action: typing.Union[str, ActionPlaceholder]
 
-    def perform_action(self, s: State):
+    def perform_action(self, s: State):  # todo: refactor to remove the use of eval
         return eval(self.action)  # uses s internally
 
     def __hash__(self):
@@ -72,7 +72,7 @@ class ControlFlowGraph:
         self.start = self.add_node("start")
 
         self.end = self.add_node("end")
-        self.end_label = self.next_bp_label()
+        self.end_label = self.fresh_label()
         self.add_edge(self.end, self.end_label)
 
         self.break_label = None
@@ -160,7 +160,7 @@ class ControlFlowGraph:
 
     def add_all(self, other: 'ControlFlowGraph') -> Tuple[ControlFlowNode, Label]:
         new_nodes = {node: self.add_node(f"({node.label})_{other.name}") for node in other.nodes}
-        new_end_label = self.next_bp_label()
+        new_end_label = self.fresh_label()
         for edge in other.edges:
             self.add_edge(new_nodes[edge.source], new_nodes[edge.target], edge.action)
         self.add_edge(new_nodes[other.end], new_end_label)
@@ -177,7 +177,7 @@ class ControlFlowGraph:
         self.actions.add(action)
         return action
 
-    def next_bp_label(self):
+    def fresh_label(self):
         label = Label(len(self.labels))
         self.labels.add(label)
         return label
@@ -200,7 +200,7 @@ class ControlFlowGraph:
         for edge in to_add:
             self.edges.add(edge)
 
-    def bp_list(self, lst: List[Tuple[Label, typing.Union[Label, ControlFlowNode]]]):
+    def bp_list(self, lst: List[Tuple[typing.Union[Label, ControlFlowNode], Label]]):
         for i in range(len(lst) - 1):
             _, end = lst[i]
             start, _ = lst[i + 1]
