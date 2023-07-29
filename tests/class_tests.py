@@ -27,7 +27,7 @@ class A:
         return self.some_method()
 
     def list_test(self, idx: int):
-        __assume__(0 <= idx and idx < len(self.some_array))
+        __assume__(0 <= idx < len(self.some_array))
         self.some_array[idx] += + 1
         return self.some_array[idx]
 

@@ -109,39 +109,43 @@ class BoolOpCodeGenerator(AbstractCodeGenerator):
 
 @handles(ast.Compare)
 class CompareCodeGenerator(AbstractCodeGenerator):
-    def is_applicable_on_node(self, node: AST) -> bool:
-        return len(node.ops) == 1 and len(node.comparators) == 1
+    def process_node(self, node: _ast.Compare) -> DecoratedDataNode:
+        prev = node.left
+        components = []
+        for comparator, op in zip(node.comparators, node.ops):
+            if isinstance(op, ast.NotIn):
+                start, var, label = self._process_expect_data(ast.Compare(left=prev,
+                                                                          ops=[ast.In()], comparators=[comparator]))
+                components.append((start, label, f"Not({var})"))
+            elif isinstance(op, ast.In):
+                left = self._process_expect_data(prev)
+                right = self._process_expect_data(comparator)
+                start_left, var_left, end_left = left.start_node, left.place, left.end_label
+                start_right, var_right, end_right = right.start_node, right.place, right.end_label
+                self.graph.bp(end_left, start_right)
+                right_type = self.graph.get_type(var_right)
+                if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
+                    components.append((start_left, end_right, f"IsMember({var_left}, {var_right})"))
+                    continue
+                elif isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
+                    value_type = right_type.range()
+                    components.append((start_left, end_right, f"Select({var_right}, {var_left}) != {value_type}.none"))
+                    continue
+                elif isinstance(self.graph.get_type(var_right), ArraySortRef):
+                    new_var = self.graph.fresh_var(smt_helper.BoolType)
+                    components.append((start_left, end_right,
+                                       f"Exists({new_var}, {var_right}[{new_var}] == {var_left})"))
+                    continue
+                else:
+                    raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
 
-    def process_node(self, node: AST) -> DecoratedDataNode:
-        comparator = node.comparators[0]
-        op = node.ops[0]
-        if isinstance(op, ast.NotIn):
-            start, var, label = self._process_expect_data(ast.Compare(left=node.left,
-                                                                      ops=[ast.In()], comparators=[comparator]))
-            return DecoratedDataNode("compare", node, start, label, f"Not({var})", smt_helper.BoolType)
-        elif isinstance(op, ast.In):
-            left = self._process_expect_data(node.left)
-            right = self._process_expect_data(comparator)
-            start_left, var_left, end_left = left.start_node, left.place, left.end_label
-            start_right, var_right, end_right = right.start_node, right.place, right.end_label
-            self.graph.bp(end_left, start_right)
-            right_type = self.graph.get_type(var_right)
-            if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
-                return DecoratedDataNode("in", node, start_left, end_right,
-                                         f"IsMember({var_left}, {var_right})", BoolType)
-            elif isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
-                value_type = right_type.range()
-                return DecoratedDataNode("in", node, start_left, end_right,
-                                         f"Select({var_right}, {var_left}) != {value_type}.none", smt_helper.BoolType)
-            elif isinstance(self.graph.get_type(var_right), ArraySortRef):
-                new_var = self.graph.fresh_var(smt_helper.BoolType)
-                return DecoratedDataNode("in", node, start_left, end_right,
-                                         f"Exists({new_var}, {var_right}[{new_var}] == {var_left})",
-                                         smt_helper.BoolType)
-            else:
-                raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
-
-        return self._process_expect_data(ast.BinOp(left=node.left, op=op, right=comparator))
+            processed = self._process_expect_data(ast.BinOp(left=prev, op=op, right=comparator))
+            components.append((processed.start_node, processed.end_label, processed.place))
+            prev = comparator
+        starts, ends, exprs = zip(*components)
+        self.graph.bp_list([(start, end) for start, end in zip(starts, ends)])
+        return DecoratedDataNode("bool", node, starts[0], ends[-1], "And(" + ', '.join(exprs) + ")",
+                                 smt_helper.BoolType)
 
 
 @handles(ast.UnaryOp)

@@ -50,7 +50,7 @@ def Exception():
     pass
 
 
-def range():
+def range(n: int):
     pass
 
 
