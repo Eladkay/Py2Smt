@@ -3,11 +3,14 @@ from typing import List, Tuple, Any
 from z3 import *
 from collections import OrderedDict
 
+# we need singleton_list
+# noinspection PyUnresolvedReferences
+from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list
+
 
 class Signature:
     def __init__(self, decls: typing.Union[dict, List[Tuple[str, Any]]]):
-        self.decls = OrderedDict((name, self.parse_type(ty))
-                                 for (name, ty) in decls.items())
+        self.decls = OrderedDict(decls)
         self.middleware = []
 
     def variable_names(self) -> List[str]:
@@ -28,66 +31,11 @@ class Signature:
         self.middleware += middleware
         return self
 
-    @classmethod
-    def parse_type(cls, ty: Any) -> SortRef:
-        if isinstance(ty, list):
-            assert len(ty) == 1
-            return ArraySort(IntSort(), cls.parse_type(ty[0]))
-        if isinstance(ty, dict):
-            assert len(ty) == 1
-            key, value = list(ty.items())[0]
-            key_type = cls.parse_type(key)
-            value_type = cls.parse_type(value)
-            option = cls.get_or_create_optional_type(value_type)
-            return ArraySort(key_type, option)
-        if isinstance(ty, set):
-            assert len(ty) == 1
-            return SetSort(cls.parse_type(list(ty)[0]))
-        if isinstance(ty, tuple):
-            types = [cls.parse_type(t) for t in ty]
-            return TupleSort(f"{ty}", types)[0]
-        else:
-            ty = cls.TYPE_ALIASES.get(ty, ty)
-            if isinstance(ty, str) and ty in [it.__name__ for it in cls.TYPE_ALIASES.keys()]:
-                return cls.TYPE_ALIASES[eval(ty)]
-            return ty
-
-    @staticmethod
-    def _cleanup_type_name(ty: str) -> str:
-        ty = ty.replace(" ", "")
-        ty = ty.replace("(", "_")
-        ty = ty.replace(")", "_")
-        ty = ty.replace(",", "_")
-        return ty
-
-    @classmethod
-    def get_or_create_optional_type(cls, ty: Any) -> DatatypeSortRef:
-        if isinstance(ty, str):
-            ty = eval(ty)
-        if isinstance(ty, typing.Hashable) and ty in cls.OPTIONAL_TYPES:
-            return cls.OPTIONAL_TYPES[ty]
-        option = Datatype(f"{Signature._cleanup_type_name(str(ty))}Option")
-        option.declare('some', ('val', ty))
-        option.declare("none")
-
-        option = option.create()
-        option.__optional__ = True
-        cls.OPTIONAL_TYPES[ty] = option
-        return option
-
     def __or__(self, other):
         assert isinstance(other, Signature)
         sig = Signature(self.decls | other.decls)
         sig.middleware = self.middleware + other.middleware
         return sig
-
-    TYPE_ALIASES = {
-        int: IntSort(), Int: IntSort(),
-        bool: BoolSort(), Bool: BoolSort(),
-        str: StringSort(), String: StringSort()
-    }
-
-    OPTIONAL_TYPES = {}
 
 
 class State:
@@ -98,25 +46,6 @@ class State:
         self.sig = sig
         self.locals = {name: Const(name + suffix, ty) for (name, ty) in sig.decls.items()}
         self.middleware = sig.middleware
-
-    @staticmethod
-    def _upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
-        real_type = var1.sort()
-        if isinstance(real_type, ArithSortRef) and isinstance(target_sort, BoolSortRef):
-            return var1 != 0
-        if isinstance(real_type, BoolSortRef) and isinstance(target_sort, ArithSortRef):
-            return If(var1, 1, 0)
-        if not isinstance(var1.sort(), DatatypeSortRef) or not isinstance(target_sort, DatatypeSortRef):
-            raise Exception(f"Cannot cast sort {var1.sort()} to {target_sort} (one of the sorts is not a class)")
-        fields_real = [real_type.accessor(0, i) for i in range(real_type.constructor(0).arity())]
-        fields_target = [target_sort.accessor(0, i) for i in range(target_sort.constructor(0).arity())]
-        field_names_real = [it.name() for it in fields_real]
-        field_names_target = [it.name() for it in fields_target]
-        missing = set(field_names_target) - set(field_names_real)
-        if len(missing) != 0:
-            raise Exception(f"Cannot cast {var1.sort()} to {target_sort} (the sorts are not comparable)")
-        return target_sort.constructor(0)(*[[itt for itt in fields_real if itt.name() == it.name()][0](var1)
-                                            for it in fields_target])
 
     def assign(self, values: dict) -> 'State':
         """simultaneous assignment"""
@@ -130,7 +59,7 @@ class State:
                         isinstance(target_value.sort(), DatatypeSortRef) and  \
                         isinstance(computed_value.sort(), DatatypeSortRef) and  \
                         target_value.sort() != computed_value.sort():
-                    computed_value = State._upcast_expr(computed_value, target_value.sort())
+                    computed_value = upcast_expr(computed_value, target_value.sort())
                 new_values[target] = computed_value
             cloned.locals.update(new_values)
         except Exception:
@@ -152,7 +81,12 @@ class State:
             expr = expr(self)
         if isinstance(expr, str):
             try:
-                expr = eval(expr, globals(), self._eval_context())
+                ctx = {'_': self}
+                for mw in self.middleware:
+                    ctx.update(mw)
+                ctx.update(self.locals)
+                ctx.update({str(ty): ty for k, ty in OPTIONAL_TYPES.items()})
+                expr = eval(expr, globals(), ctx)
             except Exception as exp:
                 raise Exception("Failed to evaluate %s (%s)" % (expr, exp))
         return expr
@@ -213,14 +147,6 @@ class State:
                     raise Z3Exception("Could not compare %s and %s of sorts %s, %s" % (val, oval,
                                                                                        val.sort(), oval.sort()))
         return And(*conj)
-
-    def _eval_context(self) -> dict:
-        ctx = {'_': self}
-        for mw in self.middleware:
-            ctx.update(mw)
-        ctx.update(self.locals)
-        ctx.update({str(ty): ty for k, ty in Signature.OPTIONAL_TYPES.items()})
-        return ctx
 
     def __getitem__(self, varname: str) -> ExprRef:
         return self.locals[varname]

@@ -2,6 +2,7 @@ import typing
 import unittest
 
 from py2smt import Py2Smt
+from stdlib import __assume__
 from tests.smt_test_case import SmtTestCase
 from z3 import *
 
@@ -78,17 +79,17 @@ class BasicTest:
         return x
 
     def arrays(self) -> int:
-        arr: typing.List[int] = [1, 2, 3]
+        arr = [1, 2, 3]
         return arr[1]
 
     def arrays_with_writing(self) -> int:
-        arr: typing.List[int] = [1, 2, 3]
+        arr = [1, 2, 3]
         arr[1] = 4
         return arr[1]
 
     def sets_and_dicts(self) -> bool:
-        some_set: typing.Set[int] = {1, 2, 3}
-        some_dict: typing.Dict[int, int] = {1: 2, 3: 4}
+        some_set = {1, 2, 3}
+        some_dict = {1: 2, 3: 4}
         return 1 in some_set and 2 in some_dict
 
     def strings(self) -> str:
@@ -97,7 +98,7 @@ class BasicTest:
         return a + b
 
     def list_in_a_dict(self) -> int:
-        d: typing.Dict[int, typing.List[int]] = {1: [1, 2, 3]}
+        d = {1: [1, 2, 3]}
         return d[1][1]
 
     def raise_(self, param: int):
@@ -120,12 +121,102 @@ class BasicTest:
         assert x == 45
         return x
 
+    def assume_assert(self, param: int):
+        __assume__(param > -1)
+        assert param > -1
+
     def for_variable_range(self, param: int) -> int:
-        assert param > 0
+        __assume__(param > -1)
         x = 0
-        for i in range(param):
+        for i in range(param + 1):
             x += i
+        assert x == (param + 1) * (param + 2) / 2
         return x
+
+    def a_lot_of_if(self, z: int) -> int:
+        x = 1
+        y = 2
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        if x > z:
+            y = x * z
+        else:
+            x = y * z
+        return x + y
 
 
 class Py2SmtBasicTests(SmtTestCase):
@@ -324,15 +415,32 @@ class Py2SmtBasicTests(SmtTestCase):
         error_condition = entry.cfg.get_error_condition()(state0, state1)
         self.assertUnsat(error_condition)
 
+    def test_assume_assert(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("assume_assert")
+        self.assertEqual(entry.args, ["self", "param"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        error_condition = entry.cfg.get_error_condition()(state0, state1)
+        self.assertUnsat(error_condition)
+
     def test_for_variable_range(self):
         smt = Py2Smt([BasicTest])
         entry = smt.get_entry_by_name("for_variable_range")
         self.assertEqual(entry.args, ["self", "param"])
         state0, state1 = entry.make_state(), entry.make_state("'")
+        error_condition = entry.cfg.get_error_condition()(state0, state1)
+        self.assertUnsat(error_condition)
+
+    @unittest.skip
+    def test_a_lot_of_if(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("a_lot_of_if")
+        self.assertEqual(entry.args, ["self", "z"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        param = state0.eval("param")
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == param * (param + 1) / 2)
 
 
 if __name__ == '__main__':

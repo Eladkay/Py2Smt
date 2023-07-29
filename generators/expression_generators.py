@@ -4,15 +4,14 @@ import sys
 from _ast import AST
 from typing import Union, List
 
-from z3 import ArraySortRef, SeqSortRef
+from z3 import ArraySortRef, SeqSortRef, ArraySort, SetSort, SeqSort
 
 import smt_helper
 from cfg import ControlFlowGraph
 from generators import misc_generators
 from generators.generators import AbstractCodeGenerator, handles, \
-    DecoratedDataNode, CodeGenerationDispatcher, syntactic_replace
+    DecoratedDataNode, CodeGenerationDispatcher, syntactic_replace, DecoratedAst, DecoratedControlNode
 from smt_helper import *
-from symbolic_interp import Signature
 
 
 @handles(_ast.Constant)
@@ -26,7 +25,7 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
             val = f"\\\"{node.value}\\\"" if isinstance(node.value, str) else node.value
         else:
             val = node.value
-        return DecoratedDataNode("const", node, new_node, new_label, val)
+        return DecoratedDataNode("const", node, new_node, new_label, val, self.graph.get_type(val))
 
 
 @handles(_ast.Name)
@@ -36,7 +35,8 @@ class NameCodeGenerator(AbstractCodeGenerator):
         new_node = self.graph.add_node(f"pass")
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label)
-        return DecoratedDataNode("name", node, new_node, new_label, node.id)
+        return DecoratedDataNode("name", node, new_node, new_label, node.id,
+                                 self.graph.types[node.id] if node.id in self.graph.types else None)
 
 
 op_return_types = {ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: IntType,
@@ -63,18 +63,20 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         self.graph.bp(end2, new_node)
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
-        return DecoratedDataNode("binop", node, start1, new_label, new_var)
+        return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.types[new_var])
 
 
 @handles(_ast.Dict)
 class DictCodeGenerator(AbstractCodeGenerator):
     def process_node(self, node: AST) -> DecoratedDataNode:
         if len(node.keys) == 0:
-            new_var = f"K(IntSort(), {Signature.get_or_create_optional_type(smt_helper.IntType)}.none)"
+            optional = get_or_create_optional_type(smt_helper.IntType)
+            new_var = f"K(IntSort(), {optional}.none)"
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)  # note: can't infer sort of empty dicts!
-            return DecoratedDataNode("dict", node, new_node, new_label, new_var)
+            return DecoratedDataNode("dict", node, new_node, new_label, new_var, ArraySort(smt_helper.IntType,
+                                                                                           optional))
 
         starts_keys, exprs_keys, ends_keys = zip(*[(item.start_node, item.place, item.end_label)
                                                    for item in [self._process_expect_data(it)
@@ -89,14 +91,14 @@ class DictCodeGenerator(AbstractCodeGenerator):
         self.graph.bp_list(starts_and_ends_keys)
         self.graph.bp(ends_keys[-1], starts_values[0])
         self.graph.bp_list(starts_and_ends_values)
-        key_type = self.graph.get_type(exprs_keys[0])
-        value_type = self.graph.get_type(exprs_values[0])
-        optional = Signature.get_or_create_optional_type(value_type)
+        key_type = self._process_expect_data(node.keys[0]).value_type
+        value_type = self._process_expect_data(node.values[0]).value_type
+        optional = get_or_create_optional_type(value_type)
         store = f"K({ControlFlowGraph.type_to_place_string(key_type)}, {optional}.none)"
         for k, v in zip(exprs_keys, exprs_values):
             store = f"Store({store}, {k}, {optional}.some({v}))"
 
-        return DecoratedDataNode("dict", node, starts_keys[0], ends_values[-1], store)
+        return DecoratedDataNode("dict", node, starts_keys[0], ends_values[-1], store, ArraySort(key_type, optional))
 
 
 @handles(ast.BoolOp)
@@ -116,7 +118,7 @@ class CompareCodeGenerator(AbstractCodeGenerator):
         if isinstance(op, ast.NotIn):
             start, var, label = self._process_expect_data(ast.Compare(left=node.left,
                                                                       ops=[ast.In()], comparators=[comparator]))
-            return DecoratedDataNode("compare", node, start, label, f"Not({var})")
+            return DecoratedDataNode("compare", node, start, label, f"Not({var})", smt_helper.BoolType)
         elif isinstance(op, ast.In):
             left = self._process_expect_data(node.left)
             right = self._process_expect_data(comparator)
@@ -125,15 +127,17 @@ class CompareCodeGenerator(AbstractCodeGenerator):
             self.graph.bp(end_left, start_right)
             right_type = self.graph.get_type(var_right)
             if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
-                return DecoratedDataNode("in", node, start_left, end_right, f"IsMember({var_left}, {var_right})")
+                return DecoratedDataNode("in", node, start_left, end_right,
+                                         f"IsMember({var_left}, {var_right})", BoolType)
             elif isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
                 value_type = right_type.range()
                 return DecoratedDataNode("in", node, start_left, end_right,
-                                         f"Select({var_right}, {var_left}) != {value_type}.none")
+                                         f"Select({var_right}, {var_left}) != {value_type}.none", smt_helper.BoolType)
             elif isinstance(self.graph.get_type(var_right), ArraySortRef):
                 new_var = self.graph.fresh_var(smt_helper.BoolType)
                 return DecoratedDataNode("in", node, start_left, end_right,
-                                         f"Exists({new_var}, {var_right}[{new_var}] == {var_left})")
+                                         f"Exists({new_var}, {var_right}[{new_var}] == {var_left})",
+                                         smt_helper.BoolType)
             else:
                 raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
 
@@ -153,7 +157,7 @@ class UnaryOpCodeGenerator(AbstractCodeGenerator):
         self.graph.bp(end, new_node)
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{op_string} {expr}'" + "})")
-        return DecoratedDataNode("unaryop", node, start, new_label, new_var)
+        return DecoratedDataNode("unaryop", node, start, new_label, new_var, smt_helper.IntType)
 
 
 @handles(ast.Subscript)
@@ -177,19 +181,27 @@ class SubscriptCodeGenerator(AbstractCodeGenerator):
             self.graph.add_edge(new_node, new_label,
                                 "s.assign({" + f"'{new_var}': '{value_sort}.val({expr1}[{expr2}])'" + "})")
         elif isinstance(value_type, SeqSortRef):
-            value_sort = smt_helper.StringType if value_type.is_string() else value_type.basis()
-            new_var = self.graph.fresh_var(value_sort)
-            new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
-            self.graph.bp(end2, new_node)
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': 'SubString({expr1}, {expr2}, 1)'" + "})")
+            if value_type.is_string():
+                value_sort = smt_helper.StringType
+                new_var = self.graph.fresh_var(value_sort)
+                new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
+                self.graph.bp(end2, new_node)
+                self.graph.add_edge(new_node, new_label,
+                                    "s.assign({" + f"'{new_var}': 'SubString({expr1}, {expr2}, 1)'" + "})")
+            else:
+                value_sort = value_type.basis()
+                new_var = self.graph.fresh_var(value_sort)
+                new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
+                self.graph.bp(end2, new_node)
+                self.graph.add_edge(new_node, new_label,
+                                    "s.assign({" + f"'{new_var}': '{expr1}[{expr2}]'" + "})")
         else:
             value_sort = value_type.range()
             new_var = self.graph.fresh_var(value_sort)
             new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
             self.graph.bp(end2, new_node)
             self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{expr1}[{expr2}]'" + "})")
-        return DecoratedDataNode("subscript", node, start1, new_label, new_var)
+        return DecoratedDataNode("subscript", node, start1, new_label, new_var, value_sort)
 
 
 @handles(ast.Set)
@@ -199,7 +211,7 @@ class SetCodeGenerator(AbstractCodeGenerator):
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
-            return DecoratedDataNode("set", node, new_node, new_label, "EmptySet(IntSort())")
+            return DecoratedDataNode("set", node, new_node, new_label, "EmptySet(IntSort())", SetSort(IntType))
         starts, exprs, ends = zip(*[(item.start_node, item.place, item.end_label)
                                     for item in [self._process_expect_data(it) for it in node.elts]])
         starts_and_ends = [(start, end) for start, end in zip(starts, ends)]
@@ -207,7 +219,7 @@ class SetCodeGenerator(AbstractCodeGenerator):
         store = f"EmptySet({ControlFlowGraph.type_to_place_string(self.graph.get_type(exprs[0]))})"
         for expr in exprs:
             store = f"Store({store}, {expr}, True)"
-        return DecoratedDataNode("set", node, starts[0], ends[-1], store)
+        return DecoratedDataNode("set", node, starts[0], ends[-1], store, SetSort(self.graph.get_type(exprs[0])))
 
 
 @handles(ast.Call)
@@ -230,7 +242,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
                 raise ValueError(f"Called member function {name} without receiver.")
         return syntactic_replace(f"{name}_self", _ast.Name(receiver), transformed, check_receiver)
 
-    def process_node(self, node: AST) -> DecoratedDataNode:
+    def process_node(self, node: AST) -> DecoratedAst:
         name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr
         receiver = self._process_expect_data(node.func.value).place if isinstance(node.func, ast.Attribute) else None
         args = [(arg.start_node, arg.place, arg.end_label)
@@ -243,7 +255,8 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
-            return DecoratedDataNode("z3_call", node, new_node, new_label, f"{name}({', '.join(map(str, exprs))})")
+            return DecoratedDataNode("z3_call", node, new_node, new_label,
+                                     f"{name}({', '.join(map(str, exprs))})", None)
 
         called_function = self.graph.system.get_entry_by_name(name,
                                                               None if receiver is None
@@ -259,12 +272,21 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
                 raise Exception("Literal expression should have exactly one argument")
             s = exprs[0]
             if not isinstance(s, _ast.Constant) or not isinstance(s.value, str):
-                raise Exception("Literal expression should have a constant string argument")
+                self.type_error("Literal expression should have a constant string argument")
             new_node = self.graph.add_node(f"return {s.value}")
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
             self.graph.bp(ends[0], new_node)
-            return DecoratedDataNode("literal_call", node, new_node, new_label, s.value)
+            return DecoratedDataNode("literal_call", node, new_node, new_label, s.value, None)
+
+        if called_function.name == "__assume__":
+            if len(exprs) != 1:
+                raise Exception("Assume expression should have exactly one argument")
+            new_node = self.graph.add_node(f"assume {exprs[0]}")
+            new_label = self.graph.fresh_label()
+            self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
+            self.graph.bp(ends[0], new_node)
+            return DecoratedControlNode("assume", node, starts[0], new_label)
 
         replaced_args = FunctionCallCodeGenerator._syntactic_param_replace(called_function.ast, params,
                                                                            [_ast.Name(it) for it in exprs])
@@ -304,7 +326,8 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             new_node = self.graph.add_node(f"{name}({', '.join(map(str, exprs))})")
         self.graph.add_edge(new_node, new_label)
         self.graph.bp(func_end, new_node)
-        return DecoratedDataNode("regular_call", node, starts[0] if len(args) > 0 else func_start, new_label, new_var)
+        return DecoratedDataNode("regular_call", node, starts[0] if len(args) > 0 else func_start, new_label,
+                                 new_var, self.graph.get_type(new_var))
 
 
 @handles(ast.Attribute)
@@ -316,7 +339,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         start, expr, end = value.start_node, value.place, value.end_label
         receiver_type = self.graph.get_type(expr)
         if not self.graph.system.is_field_of_class(receiver_type, node.attr):
-            # try finding it as a method: if it's a method, no node needs to be created
+            # try finding it as a method: if it's a method, no node needs to be created for acquiring the method
             receiver_type = receiver_type.name()
             if (receiver_type, node.attr) in self.graph.system.methods:
                 return None
@@ -329,7 +352,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label,
                             "s.assign({" + f"'{new_var}': '{receiver_type}.{node.attr}({expr})'" + "})")
-        return DecoratedDataNode("attribute", node, new_node, new_label, new_var)
+        return DecoratedDataNode("attribute", node, new_node, new_label, new_var, field_type)
 
 
 @handles(ast.List)
@@ -339,13 +362,14 @@ class ListCodeGenerator(AbstractCodeGenerator):
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
-            return DecoratedDataNode("list", node, new_node, new_label, 'K(IntSort(), 0)')
+            return DecoratedDataNode("list", node, new_node, new_label,
+                                     'Empty(SeqSort(smt_helper.IntType))', SeqSort(smt_helper.IntType))
         starts, exprs, ends = zip(*[(item.start_node, item.place, item.end_label)
                                     for item in [self._process_expect_data(it) for it in node.elts]])
         starts_and_ends = [(start, end) for start, end in zip(starts, ends)]
         self.graph.bp_list(starts_and_ends)
-        list_type = self.graph.get_type(exprs[0])
-        store = f"K(IntSort(), {ControlFlowGraph.get_place_of_default_value(list_type)})"
-        for idx, expr in enumerate(exprs):
-            store = f"Store({store}, {idx}, {expr})"
-        return DecoratedDataNode("list", node, starts[0], ends[-1], store)
+        list_type = self.graph.get_type(exprs[0])  # todo: we assume all lists are homogeneous
+        store = f"singleton_list({exprs[0]})"
+        for expr in exprs[1:]:
+            store = f"Concat({store}, singleton_list({expr}))"
+        return DecoratedDataNode("list", node, starts[0], ends[-1], store, SeqSort(list_type))

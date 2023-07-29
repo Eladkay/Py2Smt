@@ -2,11 +2,12 @@ import _ast
 import ast
 from _ast import AST
 
-from z3 import ArraySortRef
+from z3 import ArraySortRef, SeqSortRef
 
 from cfg import ControlFlowGraph, ControlFlowNode
 from generators.generators import AbstractCodeGenerator, DecoratedAst, handles, \
     DecoratedControlNode, DecoratedDataNode
+from smt_helper import IntType
 
 
 @handles(_ast.AugAssign)
@@ -28,60 +29,61 @@ class AnnAssignCodeGenerator(AbstractCodeGenerator):
         return self._process(ast.Assign(targets=[node.target], value=node.value))
 
 
-def generate_code_for_subscript(target: _ast.Subscript, value: DecoratedDataNode, gen: AbstractCodeGenerator) \
-        -> (str,) * 4 + (ControlFlowNode,):
+def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNode, value: DecoratedDataNode,
+                                gen: AbstractCodeGenerator) -> (str,) * 4 + (ControlFlowNode,):
     graph = gen.graph
-    array, index = gen._process_expect_data(target.value), gen._process_expect_data(target.slice)
     if array.place not in graph.types:
         gen.type_error(f"Variable {array.place} does not exist!")
     arr_type, idx_type, value_type = graph.get_type(array.place), \
         graph.get_type(index.place), graph.get_type(value.place)
-    if not isinstance(arr_type, ArraySortRef):
+    if not isinstance(arr_type, ArraySortRef) and not isinstance(arr_type, SeqSortRef):
         gen.type_error(f"Variable {array.place} is not an array or dict!")
 
-    domain = arr_type.domain()
-    if idx_type.name() != domain.name():
+    domain = arr_type.domain() if isinstance(arr_type, ArraySortRef) else IntType
+    rang = arr_type.range() if isinstance(arr_type, ArraySortRef) else arr_type.basis()
+    if idx_type != domain:
         gen.type_error(f"{index.place} is not in the domain {domain} of {array.place}!")
 
     idx_start, idx_place, idx_end = index.start_node, index.place, index.end_label
     value_start, value_place, value_end = value.start_node, value.place, value.end_label
     arr_start, arr_place, arr_end = array.start_node, array.place, array.end_label
 
-    if value_type.name() != arr_type.range().name() and not arr_type.range().name().endswith("Option") and \
-            not (value_type.name() == arr_type.range().name()[:-len("Option")]):
+    if value_type != rang and not rang.name().endswith("Option") and \
+            value_type.name() != rang.name()[:-len("Option")]:
         gen.type_error(f"Type of {value_place} does not match the stored type of {arr_place}! "
-                       f"types: {graph.get_type(value_place)} != {graph.get_type(arr_place).range()}")
+                       f"types: {value_type} != {rang}")
 
-    if arr_type.range().name().endswith("Option"):
+    if rang.name().endswith("Option"):
         value_type = arr_type.range()
         value_place = f"{value_type.name()}.some({value_place})"
 
+    new_arr = f"Store({arr_place}, {idx_place}, {value_place})" if isinstance(arr_type, ArraySortRef) \
+        else f"Concat(Concat(Extract({arr_place}, 0, {idx_place}), " \
+             f"singleton_list({value_place})), " \
+             f"Extract({arr_place}, {idx_place} + 1, Length({arr_place}) - {idx_place}))"
     if isinstance(array.ast_node, _ast.Name):
         graph.bp(arr_end, idx_start)
         graph.bp(idx_end, value_start)
 
         left_place = arr_place
-        right_place = f"Store({arr_place}, {idx_place}, {value_place})"
         left_start = arr_start
+        right_place = new_arr
         right_end = value_end
         new_node = graph.add_node(f"{arr_place}[{idx_place}] = {value_place}")
 
     elif isinstance(array.ast_node, _ast.Attribute):
         recv, attr = gen._process_expect_data(array.ast_node.value), array.ast_node.attr
         recv_place = recv.place
-        if recv_place not in graph.types:
-            gen.type_error(f"Variable {recv_place} is not typed! "
-                           f"A type annotation is needed before use.")
         if not graph.system.is_field_of_class(graph.get_type(recv_place), attr):
             gen.type_error(f"Field {attr} is not declared! "
                            f"A type annotation is needed before use.")
         graph.bp(arr_end, idx_start)
         graph.bp(idx_end, value_start)
-        recv_type = graph.get_type(recv_place)
+        recv_type = recv.value_type
         recv_fields = graph.system.get_fields_from_class(recv_type)
         accessors = [
             f"{recv_type}.{field}({recv_place})"
-            if field != attr else f"Store({arr_place}, {idx_place}, {value_place})"
+            if field != attr else new_arr
             for field in recv_fields
         ]
         left_place = recv_place
@@ -115,7 +117,9 @@ class AssignCodeGenerator(AbstractCodeGenerator):
         value = self._process_expect_data(node.value)
         next_label = self.graph.fresh_label()
         if isinstance(target, _ast.Subscript):
-            left_place, left_start, right_place, right_end, new_node = generate_code_for_subscript(target, value, self)
+            array, index = self._process_expect_data(target.value), self._process_expect_data(target.slice)
+            left_place, left_start, right_place, right_end, new_node \
+                = generate_code_for_subscript(array, index, value, self)
         elif isinstance(target, _ast.Attribute):
             recv, attr = self._process_expect_data(target.value), target.attr
             recv_start, recv_place, recv_end = recv.start_node, recv.place, recv.end_label
@@ -143,7 +147,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
             name = target.id
             if name not in self.graph.types:
                 if value.place not in self.graph.types:
-                    literal_type = ControlFlowGraph.get_literal_type(value.place)
+                    literal_type = value.value_type
                     if literal_type is None:
                         self.type_error(f"Variable {name} is not typed! "
                                         f"A type annotation is needed before use.")

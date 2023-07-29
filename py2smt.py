@@ -5,9 +5,10 @@ from _ast import AST, expr, Constant
 from textwrap import dedent
 from typing import *
 
-from z3 import z3, DatatypeSortRef, IntSort, BoolSort, StringSort, ArraySort, SetSort, SortRef
+from z3 import z3, DatatypeSortRef, IntSort, BoolSort, StringSort, ArraySort, SetSort, SortRef, SeqSort
 
 from generators.generators import CodeGenerationDispatcher
+from smt_helper import get_or_create_optional_type
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -81,7 +82,7 @@ class Py2Smt:
                         for method in set(dir(cls)) - set(dir(object))
                         if (not method.startswith("__") and isinstance(getattr(cls, method), Callable))}
 
-        # constructors from the classes
+        # constructors for the classes
         self.methods.update({(cls.__name__, f"__init__"):
                              MethodObject.create_empty_constructor(self, cls, self.class_fields[cls])
                              for cls in classes
@@ -94,7 +95,7 @@ class Py2Smt:
         # methods from the stdlib
         self.methods.update({("", method): MethodObject.get_from_method(getattr(stdlib, method), self)
                              for method in set(dir(stdlib)) - set(dir(object))
-                             if (not method.startswith("__")) and isinstance(getattr(stdlib, method), Callable) and
+                             if isinstance(getattr(stdlib, method), Callable) and
                              getattr(stdlib, method).__module__ == stdlib.__name__})
 
     def add_abstract_type(self, concrete: Type, abstract: z3.SortRef):
@@ -158,7 +159,7 @@ class Py2Smt:
                                            for superclass in superclasses for field in self.class_fields[superclass]})
 
             self.class_types[cls] = z3.Datatype(f"{cls.__name__}"), \
-                [(field, Signature.parse_type(self.get_abstract_type_from_concrete(typ)))
+                [(field, self.get_abstract_type_from_concrete(typ))
                  for field, typ in self.class_fields[cls].items()]
         for cls in self.classes:
             datatype, fields = self.class_types[cls]
@@ -182,12 +183,11 @@ class Py2Smt:
             assert isinstance(annotation.slice, ast.Name) or isinstance(annotation.slice, ast.Tuple)
             if (isinstance(annotation.value, ast.Name) and annotation.value.id == "List") \
                     or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "List"):
-                return ArraySort(IntSort(), self.get_type_from_annotation(annotation.slice))
+                return SeqSort(self.get_type_from_annotation(annotation.slice))
             elif (isinstance(annotation.value, ast.Name) and annotation.value.id == "Dict") \
                     or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "Dict"):
                 return ArraySort(self.get_type_from_annotation(annotation.slice.elts[0]),
-                                 Signature.get_or_create_optional_type(
-                                     self.get_type_from_annotation(annotation.slice.elts[1])))
+                                 get_or_create_optional_type(self.get_type_from_annotation(annotation.slice.elts[1])))
             elif (isinstance(annotation.value, ast.Name) and annotation.value.id == "Set") \
                     or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "Set"):
                 return SetSort(self.get_type_from_annotation(annotation.slice))
@@ -201,7 +201,7 @@ class Py2Smt:
         elif isinstance(annotation, ast.Dict):
             assert len(annotation.keys) == len(annotation.values) == 1
             ret = ArraySort(self.get_type_from_annotation(*annotation.keys),
-                            Signature.get_or_create_optional_type(self.get_type_from_annotation(*annotation.values)))
+                            get_or_create_optional_type(self.get_type_from_annotation(*annotation.values)))
         elif isinstance(annotation, ast.Set):
             assert len(annotation.elts) == 1
             ret = SetSort(self.get_type_from_annotation(*annotation.elts))
@@ -223,5 +223,5 @@ class Py2Smt:
     def get_fields_from_class(self, cls: Type) -> dict[str, DatatypeSortRef]:
         if isinstance(cls, DatatypeSortRef):
             cls = [it for it in self.classes if it.__name__ == cls.name()][0]
-        return {field: Signature.parse_type(self.get_abstract_type_from_concrete(typ))
+        return {field: self.get_abstract_type_from_concrete(typ)
                 for field, typ in self.class_fields[cls].items()}

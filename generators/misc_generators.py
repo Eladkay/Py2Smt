@@ -4,7 +4,7 @@ from _ast import AST
 
 from cfg import ControlFlowGraph
 from generators.generators import AbstractCodeGenerator, DecoratedLeafNode, handles, \
-    DecoratedControlNode
+    DecoratedControlNode, DecoratedDataNode
 
 
 nop = [ast.arguments, ast.Load, ast.Store, ast.FunctionDef, ast.Tuple]
@@ -73,7 +73,8 @@ class ModuleCodeGenerator(AbstractCodeGenerator):
 class ExprCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedControlNode:
-        res = self._process_expect_data(node.value)
+        res = self._process(node.value)
+        assert isinstance(res, DecoratedControlNode) or isinstance(res, DecoratedDataNode)
         return DecoratedControlNode("expr", node, res.start_node, res.end_label)
 
 

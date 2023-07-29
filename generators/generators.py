@@ -2,7 +2,9 @@ import ast
 from _ast import AST, expr
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Type, Union, List, NoReturn, Callable
+from typing import Type, Union, List, NoReturn, Callable, Optional
+
+from z3 import SortRef
 
 from cfg import ControlFlowGraph, ControlFlowNode, Label
 from common import Py2SmtException
@@ -35,6 +37,7 @@ class DecoratedDataNode(DecoratedAst):
     start_node: ControlFlowNode
     end_label: Label
     place: str
+    value_type: Optional[SortRef]
 
 
 @dataclass

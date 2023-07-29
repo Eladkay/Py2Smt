@@ -23,7 +23,6 @@ class ConstRangeForLoopGenerator(AbstractCodeGenerator):
             processed_body = [self._process_expect_control(syntactic_replace(var, _ast.Constant(i), b)) for b in body]
             blocks.append((processed_body[0].start_node, processed_body[-1].end_label))
             self.graph.bp_list([(stmt.start_node, stmt.end_label) for stmt in processed_body])
-            pass
         self.graph.bp_list(blocks)
         node = self.graph.add_node(f"for {var} in range({args})")
         label = self.graph.fresh_label()
@@ -60,13 +59,15 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
             step = args[2].place
         else:
             self.type_error(f"range() expected 1, 2 or 3 arguments, got {len(args)}")
-            raise Exception()
-        # args should be computed already because range is a function
+            raise Exception()  # for the type checker
+        args_start = args[0].start_node
 
         backup_stop = self.graph.fresh_var(smt_helper.IntType)
         backup_step = self.graph.fresh_var(smt_helper.IntType)
         backup_stop_node = self.graph.add_node(f"{backup_stop} = {stop}")
         backup_step_node = self.graph.add_node(f"{backup_step} = {step}")
+        fake_range_function = self._process_expect_data(tree.iter)
+        self.graph.bp(fake_range_function.end_label, backup_stop_node)
         self.graph.add_edge(backup_stop_node, backup_step_node, "s.assign({" + f"'{backup_stop}': '{stop}'" + "})")
 
         self.graph.report_type(var, smt_helper.IntType)
@@ -90,4 +91,4 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
         self.graph.bp(processed_body[-1].end_label, loop_node)
         self.graph.add_edge(loop_node, label, f"s.assume('Not(Or(And({backup_step} > 0, {var} < {backup_stop}), "
                                               f"And({backup_step} < 0, {var} > {backup_stop})))')")
-        return DecoratedControlNode(f"const_range_for", tree, backup_stop_node, label)
+        return DecoratedControlNode(f"const_range_for", tree, args_start, label)

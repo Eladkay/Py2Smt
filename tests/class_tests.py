@@ -2,6 +2,7 @@ import unittest
 from typing import List
 
 from py2smt import Py2Smt
+from stdlib import __assume__
 from tests.smt_test_case import SmtTestCase
 
 
@@ -26,6 +27,7 @@ class A:
         return self.some_method()
 
     def list_test(self, idx: int) -> int:
+        __assume__(0 <= idx and idx < len(self.some_array))
         self.some_array[idx] += + 1
         return self.some_array[idx]
 
@@ -74,6 +76,7 @@ class Py2SmtClassTests(SmtTestCase):
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state1.eval("A.some_array(self)[idx]"))
+        self.assertImplies(tr, state1.eval("A.some_field(self)") == state0.eval("A.some_field(self)"))
         self.assertImplies(tr, state1.eval("A.some_array(self)[idx]") == 1 + state0.eval("A.some_array(self)[idx]"))
 
     def test_constructors(self):

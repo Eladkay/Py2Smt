@@ -41,11 +41,22 @@ def str_replace(s: str, old: str, new: str) -> str:
 def ValueError():
     pass
 
+
 def TypeError():
     pass
+
 
 def Exception():
     pass
 
+
 def range():
+    pass
+
+
+def __assume__(s):
+    pass
+
+
+def __literal__(s):
     pass

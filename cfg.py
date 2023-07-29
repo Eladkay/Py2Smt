@@ -84,6 +84,8 @@ class ControlFlowGraph:
             return "False"
         elif isinstance(ty, SeqSortRef) and ty.is_string():
             return "\"\""
+        elif isinstance(ty, SeqSortRef):
+            return f"Empty({ControlFlowGraph.type_to_place_string(ty)})"
         elif ty.name().endswith("Option"):
             return f"{ty}.none"
         else:
@@ -126,6 +128,8 @@ class ControlFlowGraph:
             return "BoolSort()"
         elif isinstance(ty, SeqSortRef) and ty.is_string():
             return "StringSort()"
+        elif isinstance(ty, SeqSortRef):
+            return f"SeqSort({ControlFlowGraph.type_to_place_string(ty.basis())})"
         else:
             raise NotImplementedError(f"Cannot get place string for type {ty}")
 
