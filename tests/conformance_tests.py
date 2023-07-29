@@ -8,18 +8,18 @@ class A:
     def __init__(self):
         self.some_field = 0
 
-    def some_writing_method(self) -> int:
+    def some_writing_method(self):
         self.some_field = 1
         return 2
 
-    def some_reading_method(self) -> int:
+    def some_reading_method(self):
         return self.some_field
 
-    def some_reading_writing_method(self) -> int:
+    def some_reading_writing_method(self):
         self.some_field = 1
         return self.some_field
 
-    def some_overridden_reading_writing_method(self) -> int:
+    def some_overridden_reading_writing_method(self):
         self.some_field += 1
         return self.some_field
 
@@ -28,13 +28,13 @@ class B(A):
     other_field: int
     object_field: A
 
-    def other_new_method(self) -> int:
+    def other_new_method(self):
         x = self.some_reading_writing_method()  # x' = 1, some_field' = 1, other_field' = other_field
         self.other_field += 1  # x' = 1, some_field' = 1, other_field' = other_field + 1
         return x + self.other_field + self.some_field
         # returned' = 3 + other_field, some_field' = 1, other_field' = other_field + 1
 
-    def some_overridden_reading_writing_method(self) -> int:
+    def some_overridden_reading_writing_method(self):
         self.some_writing_method()  # some_field' = 1, other_field' = other_field
         x = self.other_new_method()  # x' = 3 + other_field, some_field' = 1, other_field' = other_field + 1
         self.some_field += x   # x' = 3 + other_field, some_field' = 4 + other_field, other_field' = other_field + 1
@@ -44,11 +44,11 @@ class B(A):
     def upcast(self) -> A:
         return self
 
-    def object_field(self) -> int:
+    def object_field(self):
         self.object_field.some_writing_method()  # object_field.some_field' = 1
         return self.object_field.some_reading_method()  # returned' = 1, object_field.some_field' = 1
 
-    def object_field2(self) -> int:
+    def object_field2(self):
         self.object_field.some_field = 1
         return self.object_field.some_field
 

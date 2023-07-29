@@ -10,23 +10,23 @@ class A:
     some_field: int
     some_array: List[int]
 
-    def some_method(self) -> int:
+    def some_method(self):
         self.some_field += 1
         return self.some_field
 
-    def field_of_other(self, a: 'A') -> int:
+    def field_of_other(self, a: 'A'):
         self.some_field += a.some_field
         return a.some_field
 
-    def constructors(self) -> int:
+    def constructors(self):
         new_a = A()
         new_a.some_field = 1
         return new_a.some_field
 
-    def method_call(self) -> int:
+    def method_call(self):
         return self.some_method()
 
-    def list_test(self, idx: int) -> int:
+    def list_test(self, idx: int):
         __assume__(0 <= idx and idx < len(self.some_array))
         self.some_array[idx] += + 1
         return self.some_array[idx]
@@ -36,10 +36,10 @@ class RectangleTestClass:
     width: int
     height: int
 
-    def get_area(self) -> int:
+    def get_area(self):
         return self.width * self.height
 
-    def get_width(self) -> int:
+    def get_width(self):
         ret = self.width
         self.width = 0
         return ret

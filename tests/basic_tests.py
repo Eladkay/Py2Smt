@@ -8,26 +8,26 @@ from z3 import *
 
 # noinspection PyMethodMayBeStatic
 class BasicTest:
-    def simple_return(self) -> int:
+    def simple_return(self):
         return 1
 
-    def simple_assignment(self) -> int:
+    def simple_assignment(self):
         x = 1
         return x
 
-    def maybe_assignment(self, param: int) -> int:
+    def maybe_assignment(self, param: int):
         x = 1
         if param == 3:
             x = 2
         return x
 
-    def ifelse(self, param: int) -> int:
+    def ifelse(self, param: int):
         if param == 3:
             return 1
         else:
             return 2
 
-    def while_loop(self, param: int) -> int:
+    def while_loop(self, param: int):
         tmp = param
         i = 0
         while i < 5:
@@ -35,42 +35,42 @@ class BasicTest:
             i += 1
         return tmp
 
-    def binop(self, x: int, y: int) -> int:
+    def binop(self, x: int, y: int):
         return x + y + 1
 
-    def to_be_inlined(self) -> int:
+    def to_be_inlined(self):
         x = 2
         return 2
 
-    def func_call(self) -> int:
+    def func_call(self):
         return self.to_be_inlined()
 
-    def some_func_with_args(self, param: int) -> int:
+    def some_func_with_args(self, param: int):
         return param * 2
 
-    def func_call_with_args(self) -> int:
+    def func_call_with_args(self):
         return self.some_func_with_args(2)
 
     def interfering_function(self):
         x = 1
 
-    def interfered_function(self) -> int:
+    def interfered_function(self):
         x = 2
         self.interfering_function()
         return x
 
-    def bools(self) -> bool:
+    def bools(self):
         x = True
         y = False
         return x and y
 
-    def breaking(self) -> int:
+    def breaking(self):
         x = 1
         while True:
             break
         return x
 
-    def breaking2(self) -> int:
+    def breaking2(self):
         x = 1
         while True:
             x = x + 1
@@ -78,26 +78,26 @@ class BasicTest:
                 break
         return x
 
-    def arrays(self) -> int:
+    def arrays(self):
         arr = [1, 2, 3]
         return arr[1]
 
-    def arrays_with_writing(self) -> int:
+    def arrays_with_writing(self):
         arr = [1, 2, 3]
         arr[1] = 4
         return arr[1]
 
-    def sets_and_dicts(self) -> bool:
+    def sets_and_dicts(self):
         some_set = {1, 2, 3}
         some_dict = {1: 2, 3: 4}
         return 1 in some_set and 2 in some_dict
 
-    def strings(self) -> str:
+    def strings(self):
         a = "a"
         b = "b"
         return a + b
 
-    def list_in_a_dict(self) -> int:
+    def list_in_a_dict(self):
         d = {1: [1, 2, 3]}
         return d[1][1]
 
@@ -108,13 +108,13 @@ class BasicTest:
     def assert_(self, param: int):
         assert param != 1
 
-    def for_range(self) -> int:
+    def for_range(self):
         x = 0
         for i in range(10):
             x += i
         return x
 
-    def for_range_and_bmc(self) -> int:
+    def for_range_and_bmc(self):
         x = 0
         for i in range(10):
             x += i
@@ -125,7 +125,7 @@ class BasicTest:
         __assume__(param > -1)
         assert param > -1
 
-    def for_variable_range(self, param: int) -> int:
+    def for_variable_range(self, param: int):
         __assume__(param > -1)
         x = 0
         for i in range(param + 1):
@@ -133,7 +133,7 @@ class BasicTest:
         assert x == (param + 1) * (param + 2) / 2
         return x
 
-    def a_lot_of_if(self, z: int) -> int:
+    def a_lot_of_if(self, z: int):
         x = 1
         y = 2
         if x > z:
@@ -217,6 +217,13 @@ class BasicTest:
         else:
             x = y * z
         return x + y
+
+    def list_for(self):
+        x = [1, 2, 3]
+        sum = 0
+        for i in x:
+            sum += i
+        return sum
 
 
 class Py2SmtBasicTests(SmtTestCase):
@@ -441,6 +448,15 @@ class Py2SmtBasicTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
+
+    def test_list_for(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("list_for")
+        self.assertEqual(entry.args, ["self"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 6)
 
 
 if __name__ == '__main__':

@@ -173,7 +173,11 @@ class AssignCodeGenerator(AbstractCodeGenerator):
 class ReturnCodeGenerator(AbstractCodeGenerator):
     def process_node(self, node: AST) -> DecoratedAst:
         if self.graph.return_var is None and node.value is not None:
-            self.type_error(f"Function {self.graph.name} is not declared to return anything!")
+            value = self._process_expect_data(node.value)
+            if value.value_type is not None:
+                self.graph.return_var = self.graph.fresh_var(value.value_type)
+            else:
+                self.type_error(f"Function {self.graph.name} is not declared to return anything!")
         next_label = self.graph.fresh_label()
         if node.value is not None:
             value = self._process_expect_data(node.value)
