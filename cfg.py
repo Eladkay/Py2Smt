@@ -3,7 +3,8 @@ import typing
 from dataclasses import dataclass
 from typing import Callable, Tuple, List, Any, Type
 
-from z3 import *
+from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
+                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef)
 
 from symbolic_interp import State, Signature
 
@@ -78,18 +79,17 @@ class ControlFlowGraph:
         if isinstance(ty, ArraySortRef):
             return f"K({ControlFlowGraph.type_to_place_string(ty.domain())}, " \
                    f"{ControlFlowGraph.get_place_of_default_value(ty.range())})"
-        elif isinstance(ty, ArithSortRef):
+        if isinstance(ty, ArithSortRef):
             return "0"
-        elif isinstance(ty, BoolSortRef):
+        if isinstance(ty, BoolSortRef):
             return "False"
-        elif isinstance(ty, SeqSortRef) and ty.is_string():
+        if isinstance(ty, SeqSortRef) and ty.is_string():
             return "\"\""
-        elif isinstance(ty, SeqSortRef):
+        if isinstance(ty, SeqSortRef):
             return f"Empty({ControlFlowGraph.type_to_place_string(ty)})"
-        elif ty.name().endswith("Option"):
+        if ty.name().endswith("Option"):
             return f"{ty}.none"
-        else:
-            raise NotImplementedError(f"Cannot get default value for type {ty}")
+        raise NotImplementedError(f"Cannot get default value for type {ty}")
 
     @staticmethod
     def get_literal_type(value: str):
@@ -102,7 +102,8 @@ class ControlFlowGraph:
             pass
         if value in ["True", "False"]:
             return BoolSort()
-        if (value.startswith('"') or value.startswith("\\\"")) and (value.endswith('"') or value.endswith("\\\"")):
+        if ((value.startswith('"') or value.startswith("\\\"")) and
+                (value.endswith('"') or value.endswith("\\\""))):
             return StringSort()
         try:
             return eval(value).sort()
@@ -122,16 +123,15 @@ class ControlFlowGraph:
         if isinstance(ty, ArraySortRef):
             return f"ArraySort({ControlFlowGraph.type_to_place_string(ty.domain())}, " \
                    f"{ControlFlowGraph.type_to_place_string(ty.range())})"
-        elif isinstance(ty, ArithSortRef):
+        if isinstance(ty, ArithSortRef):
             return "IntSort()"
-        elif isinstance(ty, BoolSortRef):
+        if isinstance(ty, BoolSortRef):
             return "BoolSort()"
-        elif isinstance(ty, SeqSortRef) and ty.is_string():
+        if isinstance(ty, SeqSortRef) and ty.is_string():
             return "StringSort()"
-        elif isinstance(ty, SeqSortRef):
+        if isinstance(ty, SeqSortRef):
             return f"SeqSort({ControlFlowGraph.type_to_place_string(ty.basis())})"
-        else:
-            raise NotImplementedError(f"Cannot get place string for type {ty}")
+        raise NotImplementedError(f"Cannot get place string for type {ty}")
 
     def report_type(self, var: str, ty: Any):
         if ty is None:
@@ -195,7 +195,8 @@ class ControlFlowGraph:
             start, _ = lst[i + 1]
             self.bp(end, start)
 
-    def _dfs(self, node: ControlFlowNode, depth_bound: int, end_node: ControlFlowNode, path: List[ControlFlowEdge]):
+    def _dfs(self, node: ControlFlowNode, depth_bound: int,
+             end_node: ControlFlowNode, path: List[ControlFlowEdge]):
         if depth_bound == 0:
             return
         if node == end_node:
@@ -217,11 +218,12 @@ class ControlFlowGraph:
                    for edge_path in edge_paths]
 
         def tr(state0: State, state1: State) -> ExprRef:
-            assert all(it in state0.sig.decls and it in state1.sig.decls for it in self.get_signature().decls)
+            assert all(it in state0.sig.decls and it in state1.sig.decls
+                       for it in self.get_signature().decls)
             computation_paths = []
             for action in lambdas:
                 new_state = action(state0)
-                path = simplify(And(*[it for it in new_state.assumptions], state1 == new_state))
+                path = simplify(And(*list(new_state.assumptions), state1 == new_state))
                 if path is not False:
                     computation_paths.append(path)
             return simplify(Or(*computation_paths))

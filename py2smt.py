@@ -3,9 +3,10 @@ import inspect
 import sys
 from _ast import AST, expr, Constant
 from textwrap import dedent
-from typing import *
+from typing import List, Union, Type, Callable, Any, Dict
 
-from z3 import z3, DatatypeSortRef, IntSort, BoolSort, StringSort, ArraySort, SetSort, SortRef, SeqSort
+from z3 import (z3, DatatypeSortRef, IntSort, BoolSort,
+                StringSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
 from smt_helper import get_or_create_optional_type
@@ -17,7 +18,8 @@ from cfg import ControlFlowGraph
 class MethodObject:
 
     @staticmethod
-    def get_from_method(method: Callable, system: 'Py2Smt', cls: Union[Type, None] = None) -> 'MethodObject':
+    def get_from_method(method: Callable, system: 'Py2Smt',
+                        cls: Union[Type, None] = None) -> 'MethodObject':
         cls = cls if cls else vars(sys.modules[method.__module__])[method.__qualname__.split('.')[0]]
         if not isinstance(cls, Type):
             cls = None
@@ -27,7 +29,8 @@ class MethodObject:
                             cls,
                             system)
 
-    def __init__(self, name: str, tree: AST, args: List[str], cls: Union[Type, None], system: 'Py2Smt'):
+    def __init__(self, name: str, tree: AST, args: List[str],
+                 cls: Union[Type, None], system: 'Py2Smt'):
         self.system = system
         self.name = name
         self.ast = tree
@@ -57,10 +60,11 @@ class MethodObject:
         return State(self.sig, tag)
 
     @staticmethod
-    def create_empty_constructor(system: 'Py2Smt', ty: Type, fields: Dict[str, SortRef]) -> 'MethodObject':
+    def create_empty_constructor(system: 'Py2Smt', ty: Type,
+                                 fields: Dict[str, SortRef]) -> 'MethodObject':
         body = "return self" if not fields else \
-            '\n\t'.join([f'self.{f} = {ControlFlowGraph.get_place_of_default_value(ty)}' for f, ty in fields.items()])\
-            + "\n\treturn self"
+            '\n\t'.join([f'self.{f} = {ControlFlowGraph.get_place_of_default_value(ty)}'
+                         for f, ty in fields.items()]) + "\n\treturn self"
         empty_constructor = f"""def __init__(self) -> {ty.__name__}:\n\t{body}"""
         return MethodObject("__init__", ast.parse(empty_constructor), [], ty, system)
 
@@ -77,18 +81,18 @@ class Py2Smt:
 
         # methods from the classes
         self.methods = {(cls.__name__, method):
-                        MethodObject.get_from_method(getattr(cls, method), self, cls)
+                            MethodObject.get_from_method(getattr(cls, method), self, cls)
                         for cls in classes
                         for method in set(dir(cls)) - set(dir(object))
                         if (not method.startswith("__") and isinstance(getattr(cls, method), Callable))}
 
         # constructors for the classes
-        self.methods.update({(cls.__name__, f"__init__"):
-                             MethodObject.create_empty_constructor(self, cls, self.class_fields[cls])
+        self.methods.update({(cls.__name__, "__init__"):
+                                 MethodObject.create_empty_constructor(self, cls, self.class_fields[cls])
                              for cls in classes
                              if getattr(cls, "__init__") is object.__init__})
-        self.methods.update({(cls.__name__, f"__init__"):
-                             MethodObject.get_from_method(getattr(cls, "__init__"), self, cls)
+        self.methods.update({(cls.__name__, "__init__"):
+                                 MethodObject.get_from_method(getattr(cls, "__init__"), self, cls)
                              for cls in classes
                              if getattr(cls, "__init__") is not object.__init__})
 
@@ -106,14 +110,16 @@ class Py2Smt:
             return concrete
         return self._abstract_types[str(concrete)]
 
-    def get_transition_relation_for_method(self, cls: Type, method: Callable) -> Callable[[State, State], z3.ExprRef]:
+    def get_transition_relation_for_method(self, cls: Type, method: Callable) \
+            -> Callable[[State, State], z3.ExprRef]:
         if (cls, method.__name__) not in self.methods:
             raise ValueError("Method not represented")
 
         cfg = self.methods[method].cfg
         return cfg.get_transition_relation(self.depth_bound)
 
-    def get_entry_by_name(self, name: str, typ: Union[Type, DatatypeSortRef, str, None] = None) -> MethodObject:
+    def get_entry_by_name(self, name: str,
+                          typ: Union[Type, DatatypeSortRef, str, None] = None) -> MethodObject:
         if isinstance(typ, DatatypeSortRef):
             typ = [it for it in self.classes if it.__name__ == typ.name()][0]
         if isinstance(typ, Type):
@@ -122,7 +128,7 @@ class Py2Smt:
             if method == name and (typ is None or typ == cls):
                 return self.methods[(cls, method)]
         if name in [cls.__name__ for cls in self.classes]:
-            return self.methods[(name, f"__init__")]
+            return self.methods[(name, "__init__")]
         raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
 
     def has_entry(self, name: str, typ: Union[Type, DatatypeSortRef, str, None] = None) -> bool:
@@ -135,16 +141,17 @@ class Py2Smt:
     def get_or_add_entry_by_name(self, name: str, cls: Type) -> MethodObject:
         if self.has_entry(name, cls):
             return self.get_entry_by_name(name, cls)
-        else:
-            ret = MethodObject.get_from_method(getattr(cls, name), self, cls)
-            self.methods[(cls, name)] = ret
-            return ret
+
+        ret = MethodObject.get_from_method(getattr(cls, name), self, cls)
+        self.methods[(cls, name)] = ret
+        return ret
 
     def _get_class_fields(self):
         for cls in self.classes:
             node = ast.parse(dedent(inspect.getsource(cls)))
             annotations = [it for it in node.body[0].body if isinstance(it, ast.AnnAssign)]
-            self.class_fields[cls] = {it.target.id: self.get_type_from_annotation(it.annotation) for it in annotations}
+            self.class_fields[cls] = {it.target.id: self.get_type_from_annotation(it.annotation)
+                                      for it in annotations}
 
         for cls in self.classes:
             superclasses = []
@@ -156,7 +163,8 @@ class Py2Smt:
                 queue.extend(superclass.__bases__)
             superclasses.remove(object)  # trivial
             self.class_fields[cls].update({field: self.class_fields[superclass][field]
-                                           for superclass in superclasses for field in self.class_fields[superclass]})
+                                           for superclass in superclasses
+                                           for field in self.class_fields[superclass]})
 
             self.class_types[cls] = z3.Datatype(f"{cls.__name__}"), \
                 [(field, self.get_abstract_type_from_concrete(typ))
@@ -171,29 +179,28 @@ class Py2Smt:
         base_types = {"int": IntSort(), "bool": BoolSort(), "str": StringSort()}
         if typename in base_types:
             return base_types[typename]
-        elif typename in [cls.__name__ for cls in self.classes]:
+        if typename in [cls.__name__ for cls in self.classes]:
             return [cls for cls in self.classes if cls.__name__ == typename][0]
-        else:
-            raise ValueError("Unknown type")
+        raise ValueError("Unknown type")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
         if annotation is None:
             return None
         if isinstance(annotation, ast.Subscript):
-            assert isinstance(annotation.slice, ast.Name) or isinstance(annotation.slice, ast.Tuple)
-            if (isinstance(annotation.value, ast.Name) and annotation.value.id == "List") \
-                    or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "List"):
+            assert isinstance(annotation.slice, (ast.Name, ast.Tuple))
+            val = annotation.value
+            val_name = val.id if isinstance(val, ast.Name) else None
+            val_attr = val.attr if isinstance(val, ast.Attribute) else None
+            if val_name == "List" or val_attr == "List":
                 return SeqSort(self.get_type_from_annotation(annotation.slice))
-            elif (isinstance(annotation.value, ast.Name) and annotation.value.id == "Dict") \
-                    or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "Dict"):
+            if val_name == "Dict" or val_attr == "Dict":
                 return ArraySort(self.get_type_from_annotation(annotation.slice.elts[0]),
                                  get_or_create_optional_type(self.get_type_from_annotation(annotation.slice.elts[1])))
-            elif (isinstance(annotation.value, ast.Name) and annotation.value.id == "Set") \
-                    or (isinstance(annotation.value, ast.Attribute) and annotation.value.attr == "Set"):
+            if val_name == "Set" or val_attr == "Set":
                 return SetSort(self.get_type_from_annotation(annotation.slice))
 
             raise AssertionError("Unknown subscript type")
-        elif isinstance(annotation, ast.List):
+        if isinstance(annotation, ast.List):
             assert len(annotation.elts) == 1
             ret = ArraySort(IntSort(), self.get_type_from_annotation(*annotation.elts))
         elif isinstance(annotation, Constant):

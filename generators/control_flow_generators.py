@@ -8,13 +8,13 @@ from generators.generators import AbstractCodeGenerator, handles, \
 @handles([_ast.Break, _ast.Continue])
 class BreakContinueCodeGenerator(AbstractCodeGenerator):
 
-    def process_node(self, tree: AST) -> DecoratedControlNode:
-        if isinstance(tree, _ast.Break):
+    def process_node(self, node: AST) -> DecoratedControlNode:
+        if isinstance(node, _ast.Break):
             if self.graph.break_label is None:
                 self.graph.break_label = label = self.graph.fresh_label()
             else:
                 label = self.graph.break_label
-        elif isinstance(tree, _ast.Continue):
+        elif isinstance(node, _ast.Continue):
             if self.graph.continue_label is None:
                 self.graph.continue_label = label = self.graph.fresh_label()
             else:
@@ -22,34 +22,34 @@ class BreakContinueCodeGenerator(AbstractCodeGenerator):
         else:
             raise Exception("Should not happen")
 
-        name = {_ast.Break: "break", _ast.Continue: "continue"}[type(tree)]
-        node = self.graph.add_node(name)
-        self.graph.add_edge(node, label)
+        name = {_ast.Break: "break", _ast.Continue: "continue"}[type(node)]
+        new_node = self.graph.add_node(name)
+        self.graph.add_edge(new_node, label)
         # we need a fresh label here because otherwise it'd be connected to the next statement...
-        return DecoratedControlNode(name, tree, node, self.graph.fresh_label())
+        return DecoratedControlNode(name, node, new_node, self.graph.fresh_label())
 
 
 @handles(_ast.Raise)
 class RaiseCodeGenerator(AbstractCodeGenerator):
 
-    def process_node(self, tree: AST) -> DecoratedControlNode:
-        node = self.graph.add_node("raise")
-        self.graph.add_edge(node, self.graph.error)
-        return DecoratedControlNode("raise", tree, node, self.graph.fresh_label())
+    def process_node(self, node: AST) -> DecoratedControlNode:
+        new_node = self.graph.add_node("raise")
+        self.graph.add_edge(new_node, self.graph.error)
+        return DecoratedControlNode("raise", node, new_node, self.graph.fresh_label())
 
 
 @handles(_ast.Assert)
 class AssertCodeGenerator(AbstractCodeGenerator):
 
-    def process_node(self, tree: AST) -> DecoratedControlNode:
-        test_decorated = self._process_expect_data(tree.test)
+    def process_node(self, node: AST) -> DecoratedControlNode:
+        test_decorated = self._process_expect_data(node.test)
         test_start, test_end, test_place = test_decorated.start_node, test_decorated.end_label, test_decorated.place
         label = self.graph.fresh_label()
-        node = self.graph.add_node(f"assert {test_place}")
-        self.graph.bp(test_end, node)
-        self.graph.add_edge(node, label, f"s.assume('{test_place}')")
-        self.graph.add_edge(node, self.graph.error, f"s.assume('Not({test_place})')")
-        return DecoratedControlNode(f"assert {test_place}", tree, test_start, label)
+        new_node = self.graph.add_node(f"assert {test_place}")
+        self.graph.bp(test_end, new_node)
+        self.graph.add_edge(new_node, label, f"s.assume('{test_place}')")
+        self.graph.add_edge(new_node, self.graph.error, f"s.assume('Not({test_place})')")
+        return DecoratedControlNode(f"assert {test_place}", node, test_start, label)
 
 
 @handles(_ast.While)

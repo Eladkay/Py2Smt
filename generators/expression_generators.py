@@ -18,7 +18,7 @@ from smt_helper import *
 class ConstantCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedDataNode:
-        new_node = self.graph.add_node(f"pass")
+        new_node = self.graph.add_node("pass")
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label)
         if isinstance(node.value, str):
@@ -32,7 +32,7 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
 class NameCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedDataNode:
-        new_node = self.graph.add_node(f"pass")
+        new_node = self.graph.add_node("pass")
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label)
         return DecoratedDataNode("name", node, new_node, new_label, node.id,
@@ -53,7 +53,7 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         right_decorated = self._process_expect_data(node.right)
         start1, expr1, end1 = left_decorated.start_node, left_decorated.place, left_decorated.end_label
         start2, expr2, end2 = right_decorated.start_node, right_decorated.place, right_decorated.end_label
-        if type(node.op) == ast.Add:
+        if isinstance(node.op, ast.Add):
             new_var = self.graph.fresh_var(self.graph.types[expr1])
         else:
             new_var = self.graph.fresh_var(op_return_types[type(node.op)])
@@ -127,17 +127,16 @@ class CompareCodeGenerator(AbstractCodeGenerator):
                 if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
                     components.append((start_left, end_right, f"IsMember({var_left}, {var_right})"))
                     continue
-                elif isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
+                if isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
                     value_type = right_type.range()
                     components.append((start_left, end_right, f"Select({var_right}, {var_left}) != {value_type}.none"))
                     continue
-                elif isinstance(self.graph.get_type(var_right), ArraySortRef):
+                if isinstance(self.graph.get_type(var_right), ArraySortRef):
                     new_var = self.graph.fresh_var(smt_helper.BoolType)
                     components.append((start_left, end_right,
                                        f"Exists({new_var}, {var_right}[{new_var}] == {var_left})"))
                     continue
-                else:
-                    raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
+                raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
 
             processed = self._process_expect_data(ast.BinOp(left=prev, op=op, right=comparator))
             components.append((processed.start_node, processed.end_label, processed.place))
@@ -268,12 +267,15 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         params = called_function.args
 
         if len(params) == len(exprs) + 1:
-            assert params[0] == "self"
+            if params[0] != "self":
+                self.type_error(f"Parameters and expressions number mismatch in call to {name}")
             params = params[1:]
+        elif len(params) != len(exprs):
+            self.type_error(f"Parameters and expressions number mismatch in call to {name}")
 
         if called_function.name == "__literal__":
             if len(exprs) != 1:
-                raise Exception("Literal expression should have exactly one argument")
+                self.type_error("Literal expression should have exactly one argument")
             s = exprs[0]
             if not isinstance(s, _ast.Constant) or not isinstance(s.value, str):
                 self.type_error("Literal expression should have a constant string argument")
@@ -285,7 +287,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
         if called_function.name == "__assume__":
             if len(exprs) != 1:
-                raise Exception("Assume expression should have exactly one argument")
+                self.type_error("Assume expression should have exactly one argument")
             new_node = self.graph.add_node(f"assume {exprs[0]}")
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
@@ -347,8 +349,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
             receiver_type = receiver_type.name()
             if (receiver_type, node.attr) in self.graph.system.methods:
                 return None
-            else:
-                raise Exception(f"Cannot find field {node.attr} in {receiver_type}")
+            self.type_error(f"Cannot find field {node.attr} in {receiver_type}")
         field_type = self.graph.system.get_type_from_field(receiver_type, node.attr)
         new_var = self.graph.fresh_var(field_type)
         new_node = self.graph.add_node(f"{new_var} = {expr}.{node.attr}")
@@ -370,7 +371,7 @@ class ListCodeGenerator(AbstractCodeGenerator):
                                      'Empty(SeqSort(smt_helper.IntType))', SeqSort(smt_helper.IntType))
         starts, exprs, ends = zip(*[(item.start_node, item.place, item.end_label)
                                     for item in [self._process_expect_data(it) for it in node.elts]])
-        starts_and_ends = [(start, end) for start, end in zip(starts, ends)]
+        starts_and_ends = list(zip(starts, ends))
         self.graph.bp_list(starts_and_ends)
         list_type = self.graph.get_type(exprs[0])  # todo: we assume all lists are homogeneous
         store = f"singleton_list({exprs[0]})"

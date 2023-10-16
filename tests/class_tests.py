@@ -88,6 +88,7 @@ class Py2SmtClassTests(SmtTestCase):
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 1)
         self.assertImplies(tr, state1.eval("A.some_field(new_a)") == 1)
+        self.assertImplies(tr, state0.eval("self") == state1.eval("self"))
 
     def test_method_call(self):
         smt = Py2Smt([A])

@@ -105,12 +105,8 @@ class AssignCodeGenerator(AbstractCodeGenerator):
             return False
         target = node.targets[0]
         if isinstance(target, _ast.Subscript):
-            array, index = target.value, target.slice
-            if isinstance(array, _ast.Name) or isinstance(array, _ast.Attribute):
-                return True
-        if isinstance(target, _ast.Name) or isinstance(target, _ast.Attribute):
-            return True
-        return False
+            target = target.value
+        return isinstance(target, (_ast.Name,  _ast.Attribute))
 
     def process_node(self, node: AST) -> DecoratedAst:
         target = node.targets[0]
@@ -188,8 +184,8 @@ class ReturnCodeGenerator(AbstractCodeGenerator):
                                 "\": \"" + str(value_place) + "\"})")
             self.graph.bp(next_label, self.graph.end)
             return DecoratedControlNode(f"return {value_start}", node, value_start, next_label)
-        else:
-            new_node = self.graph.add_node(ControlFlowGraph.PASS)
-            self.graph.add_edge(new_node, next_label)
-            self.graph.bp(next_label, self.graph.end)
-            return DecoratedControlNode(f"return", node, new_node, next_label)
+
+        new_node = self.graph.add_node(ControlFlowGraph.PASS)
+        self.graph.add_edge(new_node, next_label)
+        self.graph.bp(next_label, self.graph.end)
+        return DecoratedControlNode("return", node, new_node, next_label)

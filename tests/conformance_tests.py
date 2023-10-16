@@ -37,7 +37,7 @@ class B(A):
     def some_overridden_reading_writing_method(self):
         self.some_writing_method()  # some_field' = 1, other_field' = other_field
         x = self.other_new_method()  # x' = 3 + other_field, some_field' = 1, other_field' = other_field + 1
-        self.some_field += x   # x' = 3 + other_field, some_field' = 4 + other_field, other_field' = other_field + 1
+        self.some_field += x  # x' = 3 + other_field, some_field' = 4 + other_field, other_field' = other_field + 1
         return self.some_reading_method()
         # returned' = 4 + other_field, some_field' = 3 + other_field, other_field' = other_field + 1
 
@@ -58,6 +58,12 @@ class B(A):
     def check_pass_by_ref(self):
         a = A()
         self.mutator(a)
+        return a.some_field
+
+    def aliasing(self):
+        a = A()
+        b = a
+        b.some_field = 1
         return a.some_field
 
 
@@ -147,6 +153,14 @@ class Py2SmtConformanceTests(SmtTestCase):
 
     def test_pass_by_ref(self):
         object_field = self.system.get_entry_by_name("check_pass_by_ref", B)
+        state0, state1 = object_field.make_state(), object_field.make_state("'")
+        tr = object_field.cfg.get_transition_relation()(state0, state1)
+        returned_var = object_field.cfg.return_var
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(returned_var) == 1)
+
+    def test_aliasing(self):
+        object_field = self.system.get_entry_by_name("aliasing", B)
         state0, state1 = object_field.make_state(), object_field.make_state("'")
         tr = object_field.cfg.get_transition_relation()(state0, state1)
         returned_var = object_field.cfg.return_var

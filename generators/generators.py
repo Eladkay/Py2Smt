@@ -4,11 +4,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Type, Union, List, NoReturn, Callable, Optional
 
+from copy import deepcopy
 from z3 import SortRef
-
 from cfg import ControlFlowGraph, ControlFlowNode, Label
 from common import Py2SmtException
-from copy import deepcopy
 
 node_types = defaultdict(list)
 
@@ -65,7 +64,7 @@ class CodeGenerationDispatcher:
 
     def _postorder(self, tree: AST):
         for field, value in ast.iter_fields(tree):
-            if field == "annotation" or field == "returns":
+            if field in ("annotation", "returns"):
                 continue
             if isinstance(value, list):
                 for item in value:
@@ -120,16 +119,14 @@ class AbstractCodeGenerator:
 
     def _process_expect_control(self, node: AST) -> DecoratedControlNode:
         res = self._process(node)
-        if res is None:
-            raise Py2SmtException(f"Node {ast.dump(node)} returned None")
-        assert isinstance(res, DecoratedControlNode)
+        assert res is not None, f"Node {ast.dump(node)} returned None"
+        assert isinstance(res, DecoratedControlNode), f"Node {ast.dump(node)} returned {type(res)}"
         return res
 
     def _process_expect_data(self, node: AST) -> DecoratedDataNode:
         res = self._process(node)
-        if res is None:
-            raise Py2SmtException(f"Node {ast.dump(node)} returned None")
-        assert isinstance(res, DecoratedDataNode)
+        assert res is not None, f"Node {ast.dump(node)} returned None"
+        assert isinstance(res, DecoratedDataNode), f"Node {ast.dump(node)} returned {type(res)}"
         return res
 
     def process_node(self, node: AST) -> Union[DecoratedAst, None]:

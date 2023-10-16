@@ -1,10 +1,11 @@
 import typing
 from typing import List, Tuple, Any
-from z3 import *
 from collections import OrderedDict
+from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 
 # we need singleton_list
 # noinspection PyUnresolvedReferences
+# pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list
 
 
@@ -23,7 +24,7 @@ class Signature:
         return type(self)([(name, ty) for (name, ty) in self.decls.items() if name in var_names])
 
     def __repr__(self) -> str:
-        return "; ".join("%s: %s" % (name, ty) for name, ty in self.decls.items())
+        return "; ".join(f"{name}: {ty}" for name, ty in self.decls.items())
 
     def use(self, middleware: dict) -> 'Signature':
         if isinstance(middleware, dict):
@@ -62,8 +63,8 @@ class State:
                     computed_value = upcast_expr(computed_value, target_value.sort())
                 new_values[target] = computed_value
             cloned.locals.update(new_values)
-        except Exception:
-            raise Exception("Failed to assign %s" % values)
+        except Exception as exp:
+            raise type(exp)(f"Failed to assign {values}") from exp
         return cloned
 
     def assume(self, cond: typing.Union[ExprRef, bool]) -> 'State':
@@ -88,7 +89,7 @@ class State:
                 ctx.update({str(ty): ty for k, ty in OPTIONAL_TYPES.items()})
                 expr = eval(expr, globals(), ctx)
             except Exception as exp:
-                raise Exception("Failed to evaluate %s (%s)" % (expr, exp))
+                raise type(exp)(f"Failed to evaluate {expr} ({exp})") from exp
         return expr
 
     def clone(self) -> 'State':
@@ -130,8 +131,7 @@ class State:
                 ret.append("...")
                 return ret
             return val
-        else:
-            return expr
+        return expr
 
     def make_var_concrete(self, model: ModelRef, varname: str) -> Any:
         return self.make_val_concrete(model, self.locals[varname])
@@ -143,9 +143,9 @@ class State:
                 oval = other.locals[var]
                 try:
                     conj.append(val == oval)
-                except Z3Exception:
-                    raise Z3Exception("Could not compare %s and %s of sorts %s, %s" % (val, oval,
-                                                                                       val.sort(), oval.sort()))
+                except Z3Exception as exp:
+                    raise Z3Exception(f"Could not compare {val} and {oval} of "
+                                      f"sorts {val.sort()}, {oval.sort()}") from exp
         return And(*conj)
 
     def __getitem__(self, varname: str) -> ExprRef:

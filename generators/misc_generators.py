@@ -1,3 +1,8 @@
+"""
+This module contains various code generators for AST nodes that
+do not fall under any other category, but are nonetheless supported.
+"""
+
 import _ast
 import ast
 from _ast import AST
@@ -6,7 +11,7 @@ from cfg import ControlFlowGraph
 from generators.generators import AbstractCodeGenerator, DecoratedLeafNode, handles, \
     DecoratedControlNode, DecoratedDataNode
 
-
+# List of nodes that do not require any code generation.
 nop = [ast.arguments, ast.Load, ast.Store, ast.FunctionDef, ast.Tuple]
 
 
@@ -21,7 +26,8 @@ class NopCodeGenerator(AbstractCodeGenerator):
 class ArgCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedLeafNode:
-        self.graph.report_type(node.arg, self.graph.system.get_type_from_annotation(node.annotation))
+        self.graph.report_type(node.arg,
+                               self.graph.system.get_type_from_annotation(node.annotation))
         return DecoratedLeafNode("arg", node, {"arg": node.arg})
 
 
@@ -65,7 +71,8 @@ class ModuleCodeGenerator(AbstractCodeGenerator):
         processed_statements = [self._process_expect_control(stmt) for stmt in function_body]
         self.graph.bp_list([(stmt.start_node, stmt.end_label) for stmt in processed_statements])
         self.graph.bp(self._process_expect_control(function_body[-1]).end_label, self.graph.end)
-        self.graph.add_edge(self.graph.start, self._process_expect_control(function_body[0]).start_node)
+        self.graph.add_edge(self.graph.start,
+                            self._process_expect_control(function_body[0]).start_node)
         return DecoratedControlNode("module", node, self.graph.start, self.graph.end)
 
 
@@ -74,7 +81,7 @@ class ExprCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedControlNode:
         res = self._process(node.value)
-        assert isinstance(res, DecoratedControlNode) or isinstance(res, DecoratedDataNode)
+        assert isinstance(res, (DecoratedControlNode, DecoratedDataNode))
         return DecoratedControlNode("expr", node, res.start_node, res.end_label)
 
 

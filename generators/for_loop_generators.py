@@ -15,25 +15,25 @@ class ConstRangeForLoopGenerator(AbstractCodeGenerator):
             and node.iter.func.id == "range" and all(isinstance(it, _ast.Constant) for it in node.iter.args) \
             and isinstance(node.target, _ast.Name)
 
-    def process_node(self, tree: _ast.For) -> DecoratedControlNode:
-        assert isinstance(tree.target, _ast.Name) and isinstance(tree.iter, _ast.Call)  # for the type checker
-        var = tree.target.id
-        args = [cast(_ast.Constant, it).value for it in tree.iter.args]
-        body = tree.body
+    def process_node(self, node: _ast.For) -> DecoratedControlNode:
+        assert isinstance(node.target, _ast.Name) and isinstance(node.iter, _ast.Call)  # for the type checker
+        var = node.target.id
+        args = [cast(_ast.Constant, it).value for it in node.iter.args]
+        body = node.body
         blocks = []
         for i in range(*args):
             processed_body = [self._process_expect_control(syntactic_replace(var, _ast.Constant(i), b)) for b in body]
             blocks.append((processed_body[0].start_node, processed_body[-1].end_label))
             self.graph.bp_list([(stmt.start_node, stmt.end_label) for stmt in processed_body])
         self.graph.bp_list(blocks)
-        node = self.graph.add_node(f"for {var} in range({args})")
+        new_node = self.graph.add_node(f"for {var} in range({args})")
         label = self.graph.fresh_label()
         if blocks:
-            self.graph.add_edge(node, blocks[0][0])
+            self.graph.add_edge(new_node, blocks[0][0])
             self.graph.bp(blocks[-1][1], label)
         else:
-            self.graph.add_edge(node, label)
-        return DecoratedControlNode(f"const_range_for", tree, node, label)
+            self.graph.add_edge(new_node, label)
+        return DecoratedControlNode(f"const_range_for", node, new_node, label)
 
 
 @handles(ast.For)
@@ -130,5 +130,3 @@ class ListForLoopGenerator(AbstractCodeGenerator):
         self.graph.add_edge(increment, for_node, "s.assign({" + f"'{idx}': '{idx} + 1'" + "})")
 
         return DecoratedControlNode(f"list_for", tree, iterable.start_node, next_label)
-
-
