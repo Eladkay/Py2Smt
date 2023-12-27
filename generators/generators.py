@@ -52,6 +52,8 @@ class DecoratedLeafNode(DecoratedAst):
 
 # noinspection PyUnresolvedReferences
 class CodeGenerationDispatcher:
+    graph: ControlFlowGraph
+
     def __init__(self, graph: ControlFlowGraph):
         self.graph = graph
         self.generated = {}
@@ -98,6 +100,13 @@ class CodeGenerationDispatcher:
         else:
             self.graph.return_var = self.graph.fresh_var(self.graph.system.get_type_from_annotation(returns), "ret")
         self.process(tree)
+        if self.graph.name == "__init__":
+            ptr_type = self.graph.system.get_or_create_pointer(self.graph.get_type("self"))
+            alloc_node = self.graph.add_node("allocate_memory")
+            self.graph.bp(self.graph.end_label, alloc_node)
+            alloc_label = self.graph.fresh_label()
+            self.graph.add_edge(alloc_node, alloc_label, "s.allocate_memory()")
+            # TODO
         if self.graph.break_label is not None or self.graph.continue_label is not None:
             raise Exception("Break or continue outside of loop")
 

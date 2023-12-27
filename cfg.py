@@ -3,9 +3,11 @@ import typing
 from dataclasses import dataclass
 from typing import Callable, Tuple, List, Any, Type
 
+import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
                 ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef)
 
+from smt_helper import IntType
 from symbolic_interp import State, Signature
 
 
@@ -70,7 +72,9 @@ class ControlFlowGraph:
         self.continue_label = None
 
         self.types = {}
-        self.report_type("self", cls)
+        self.report_type("self", self.system.get_or_create_pointer(self.system.class_types[cls]
+                                                                   if isinstance(cls, typing.Hashable) and
+                                                                      cls in self.system.class_types else cls))
 
         self.return_var = None
 
@@ -113,6 +117,14 @@ class ControlFlowGraph:
     def get_type(self, value: str) -> Any:
         if value in self.types:
             return self.types[value]
+
+        heap_pointers_by_name = {str(it): it for it in self.system.heap_pointers.values()}
+        if value in heap_pointers_by_name:
+            return heap_pointers_by_name[value]
+        heap_by_name = {str(it): it for it in self.system.heaps.values()}
+        if value in heap_by_name:
+            return heap_by_name[value]
+
         literal_type = ControlFlowGraph.get_literal_type(value)
         if literal_type is not None:
             return literal_type
@@ -140,9 +152,8 @@ class ControlFlowGraph:
             ty = eval(ty)
         new_type = self.system.class_types[ty] if isinstance(ty, typing.Hashable) and \
                                                   ty in self.system.class_types else ty
-        if var in self.types:
-            if self.types[var] != new_type:
-                raise ValueError(f"Type redeclaration for {var}: {self.types[var]} vs {new_type}")
+        if var in self.types and self.types[var] != new_type:
+            raise ValueError(f"Type redeclaration for {var}: {self.types[var]} vs {new_type}")
         assert isinstance(new_type, SortRef)
         self.types[var] = new_type
 
@@ -304,14 +315,17 @@ class ControlFlowGraph:
         self.edges.update(to_add)
 
     def get_signature(self):
-        sig = Signature(self.types)
-        sig.use({str(ty): ty for k, ty in self.system.class_types.items()})
+        heap_pointers = {str(it): IntType for it in self.system.heap_pointers.values()}
+        heaps = {str(it): z3.ArraySort(IntType, k) for k, it in self.system.heaps.items()}
+        sig = Signature({**self.types, **heap_pointers, **heaps})
+        sig.use({str(ty): ty for k, ty in {**self.system.class_types}.items()})
         return sig
 
     def has_type(self, expr: Any) -> bool:
         return expr is not None and ControlFlowGraph.get_literal_type(expr) is not None or \
-            expr in self.types
+            expr in self.types or expr in [str(it) for it in self.system.heap_pointers.values()] \
+            or expr in [str(it) for it in self.system.heaps.values()]
 
     @property
     def return_type(self):
-        return self.types[self.return_var]
+        return self.get_type(self.return_var)

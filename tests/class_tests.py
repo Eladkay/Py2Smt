@@ -53,8 +53,8 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(self)") + 1)
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == state0.eval("A.some_field(self)") + 1)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(heap_A[self])") + 1)
+        self.assertImplies(tr, state1.eval("A.some_field(heap_A[self])") == state0.eval("A.some_field(heap_A[self])") + 1)
 
     def test_field_of_other(self):
         smt = Py2Smt([A])

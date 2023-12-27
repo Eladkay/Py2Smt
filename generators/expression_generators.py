@@ -36,7 +36,7 @@ class NameCodeGenerator(AbstractCodeGenerator):
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label)
         return DecoratedDataNode("name", node, new_node, new_label, node.id,
-                                 self.graph.types[node.id] if node.id in self.graph.types else None)
+                                 self.graph.get_type(node.id) if self.graph.has_type(node.id) else None)
 
 
 op_return_types = {ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: IntType,
@@ -54,7 +54,7 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         start1, expr1, end1 = left_decorated.start_node, left_decorated.place, left_decorated.end_label
         start2, expr2, end2 = right_decorated.start_node, right_decorated.place, right_decorated.end_label
         if isinstance(node.op, ast.Add):
-            new_var = self.graph.fresh_var(self.graph.types[expr1])
+            new_var = self.graph.fresh_var(self.graph.get_type(expr1))
         else:
             new_var = self.graph.fresh_var(op_return_types[type(node.op)])
         op_string = misc_generators.ops[type(node.op)]
@@ -63,7 +63,7 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         self.graph.bp(end2, new_node)
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
-        return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.types[new_var])
+        return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.get_type(new_var))
 
 
 @handles(_ast.Dict)
@@ -253,7 +253,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         starts, exprs, ends = zip(*args) if len(args) > 0 else ([], [], [])
         starts_and_ends = [(start, end) for start, end in zip(starts, ends)]
         self.graph.bp_list(starts_and_ends)
-        if not self.graph.system.has_entry(name, None if receiver is None else self.graph.get_type(receiver)) \
+        if not self.graph.system.has_method_entry(name, None if receiver is None else self.graph.get_type(receiver)) \
                 and name in dir(z3):
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
@@ -303,7 +303,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         replaced_locals = FunctionCallCodeGenerator._syntactic_param_replace(replaced_args, local_vars,
                                                                              list(tagged_local_vars.values()))
         for k, v in tagged_local_vars.items():
-            self.graph.report_type(v.id, called_function.cfg.types[k])
+            self.graph.report_type(v.id, called_function.cfg.get_type(k))
 
         replaced_receiver = FunctionCallCodeGenerator._syntactic_receiver_replace(replaced_locals, name, receiver) \
             if receiver is not None else replaced_locals
@@ -343,7 +343,11 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
             return None
         value = self._process_expect_data(node.value)
         start, expr, end = value.start_node, value.place, value.end_label
-        receiver_type = self.graph.get_type(expr)
+        expr_type = self.graph.get_type(expr)
+        if not is_pointer_type(expr_type):
+            self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is not a pointer type")
+
+        receiver_type = get_pointed_type(expr_type)
         if not self.graph.system.is_field_of_class(receiver_type, node.attr):
             # try finding it as a method: if it's a method, no node needs to be created for acquiring the method
             receiver_type = receiver_type.name()
@@ -352,11 +356,14 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
             self.type_error(f"Cannot find field {node.attr} in {receiver_type}")
         field_type = self.graph.system.get_type_from_field(receiver_type, node.attr)
         new_var = self.graph.fresh_var(field_type)
+        heap = self.graph.system.heaps[receiver_type]
         new_node = self.graph.add_node(f"{new_var} = {expr}.{node.attr}")
         self.graph.bp(end, new_node)
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label,
-                            "s.assign({" + f"'{new_var}': '{receiver_type}.{node.attr}({expr})'" + "})")
+                            "s.assign({" + f"'{new_var}': "
+                                           f"'{receiver_type}.{node.attr}({heap}[{expr_type}.loc({expr})])'"
+                            + "})")
         return DecoratedDataNode("attribute", node, new_node, new_label, new_var, field_type)
 
 

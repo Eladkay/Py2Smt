@@ -34,6 +34,8 @@ def upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
 
 OPTIONAL_TYPES = {}
 
+POINTER_TYPES = {}
+
 
 def _cleanup_type_name(ty: str) -> str:
     ty = ty.replace(" ", "")
@@ -53,6 +55,26 @@ def get_or_create_optional_type(ty: SortRef) -> DatatypeSortRef:
     option = option.create()
     OPTIONAL_TYPES[ty] = option
     return option
+
+
+def get_or_create_pointer_type(ty: SortRef) -> DatatypeSortRef:
+    if ty in POINTER_TYPES:
+        return POINTER_TYPES[ty]
+    type_name = _cleanup_type_name(str(ty))
+    option = Datatype(f"{type_name}Pointer")
+    option.declare(f'ptr_to_{type_name}', ('loc', IntType))
+
+    option = option.create()
+    POINTER_TYPES[ty] = option
+    return option
+
+
+def get_pointed_type(ptr: DatatypeSortRef) -> SortRef:
+    return [k for k, v in POINTER_TYPES.items() if v == ptr][0]
+
+
+def is_pointer_type(ty: SortRef) -> bool:
+    return ty in POINTER_TYPES.values()
 
 
 def singleton_list(t: Any) -> SeqRef:

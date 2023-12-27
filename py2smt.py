@@ -9,7 +9,7 @@ from z3 import (z3, DatatypeSortRef, IntSort, BoolSort,
                 StringSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
-from smt_helper import get_or_create_optional_type
+from smt_helper import get_or_create_optional_type, get_or_create_pointer_type, IntType, BoolType, StringType
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -76,6 +76,9 @@ class Py2Smt:
         self.class_types = {}
         self.depth_bound = depth_bound
 
+        self.heaps = {}
+        self.heap_pointers = {}
+
         self._abstract_types = {}
         self._get_class_fields()
 
@@ -131,7 +134,7 @@ class Py2Smt:
             return self.methods[(name, "__init__")]
         raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
 
-    def has_entry(self, name: str, typ: Union[Type, DatatypeSortRef, str, None] = None) -> bool:
+    def has_method_entry(self, name: str, typ: Union[Type, DatatypeSortRef, str, None] = None) -> bool:
         try:
             self.get_entry_by_name(name, typ)
             return True
@@ -139,7 +142,7 @@ class Py2Smt:
             return False
 
     def get_or_add_entry_by_name(self, name: str, cls: Type) -> MethodObject:
-        if self.has_entry(name, cls):
+        if self.has_method_entry(name, cls):
             return self.get_entry_by_name(name, cls)
 
         ret = MethodObject.get_from_method(getattr(cls, name), self, cls)
@@ -175,12 +178,12 @@ class Py2Smt:
             datatype.declare(f"mk_{cls.__name__}", *fields)
             self.class_types[cls] = datatype.create()
 
-    def _get_type_from_string(self, typename: str) -> Type:
-        base_types = {"int": IntSort(), "bool": BoolSort(), "str": StringSort()}
+    def _get_type_from_string(self, typename: str) -> SortRef:
+        base_types = {"int": IntType, "bool": BoolType, "str": StringType}
         if typename in base_types:
             return base_types[typename]
         if typename in [cls.__name__ for cls in self.classes]:
-            return [cls for cls in self.classes if cls.__name__ == typename][0]
+            return self.get_or_create_pointer([cls for cls in self.classes if cls.__name__ == typename][0])
         raise ValueError("Unknown type")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
@@ -232,3 +235,10 @@ class Py2Smt:
             cls = [it for it in self.classes if it.__name__ == cls.name()][0]
         return {field: self.get_abstract_type_from_concrete(typ)
                 for field, typ in self.class_fields[cls].items()}
+
+    def get_or_create_pointer(self, ty: DatatypeSortRef) -> SortRef:
+        ptr = get_or_create_pointer_type(ty)
+        if ptr not in self.heap_pointers:
+            self.heap_pointers[ty] = f"heapptr_{ty.name()}"
+            self.heaps[ty] = f"heap_{ty.name()}"  # todo is this wrong?
+        return ptr

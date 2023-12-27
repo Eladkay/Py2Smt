@@ -7,7 +7,7 @@ from z3 import ArraySortRef, SeqSortRef
 from cfg import ControlFlowGraph, ControlFlowNode
 from generators.generators import AbstractCodeGenerator, DecoratedAst, handles, \
     DecoratedControlNode, DecoratedDataNode
-from smt_helper import IntType
+from smt_helper import IntType, is_pointer_type, get_pointed_type
 
 
 @handles(_ast.AugAssign)
@@ -32,7 +32,7 @@ class AnnAssignCodeGenerator(AbstractCodeGenerator):
 def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNode, value: DecoratedDataNode,
                                 gen: AbstractCodeGenerator) -> (str,) * 4 + (ControlFlowNode,):
     graph = gen.graph
-    if array.place not in graph.types:
+    if not graph.has_type(array.place):
         gen.type_error(f"Variable {array.place} does not exist!")
     arr_type, idx_type, value_type = graph.get_type(array.place), \
         graph.get_type(index.place), graph.get_type(value.place)
@@ -120,29 +120,34 @@ class AssignCodeGenerator(AbstractCodeGenerator):
             recv, attr = self._process_expect_data(target.value), target.attr
             recv_start, recv_place, recv_end = recv.start_node, recv.place, recv.end_label
             value_start, value_place, value_end = value.start_node, value.place, value.end_label
-
-            if recv_place not in self.graph.types:
+            if not self.graph.has_type(recv_place):
                 self.type_error(f"Variable {recv_place} is not typed! "
                                 f"A type annotation is needed before use.")
-            if not self.graph.system.is_field_of_class(self.graph.get_type(recv_place), attr):
+            recv_type = self.graph.get_type(recv_place)
+
+            if not is_pointer_type(recv_type):
+                self.type_error(f"Variable {recv_place} is not a pointer!")
+            pointed_type = get_pointed_type(recv_type)
+
+            if not self.graph.system.is_field_of_class(pointed_type, attr):
                 self.type_error(f"Field {attr} is not declared! "
                                 f"A type annotation is needed before use.")
 
             self.graph.bp(recv_end, value_start)
-            recv_type = self.graph.get_type(recv_place)
-            recv_fields = self.graph.system.get_fields_from_class(recv_type)
-            accessors = [f"{recv_type}.{field}({recv_place})" if field != attr else value.place
+            recv_fields = self.graph.system.get_fields_from_class(pointed_type)
+            heap = self.graph.system.heaps[pointed_type]
+            accessors = [f"{pointed_type}.{field}({heap}[{recv_type}.loc({recv_place})])" if field != attr else value.place
                          for field in recv_fields]
-
-            left_place = recv_place
-            right_place = f"{recv_type}.mk_{recv_type}({', '.join(map(str, accessors))})"
+            left_place = str(heap)
+            right_place = (f"Store({heap}, {recv_type}.loc({recv_place}), "
+                           f"{pointed_type}.mk_{pointed_type}({', '.join(map(str, accessors))}))")
             left_start = recv_start
             right_end = value_end
             new_node = self.graph.add_node(f"{recv_place}.{attr} = {value_place}")
         elif isinstance(target, _ast.Name):
             name = target.id
-            if name not in self.graph.types:
-                if value.place not in self.graph.types:
+            if not self.graph.has_type(name):
+                if not self.graph.has_type(value.place):
                     literal_type = value.value_type
                     if literal_type is None:
                         self.type_error(f"Variable {name} is not typed! "
@@ -159,7 +164,6 @@ class AssignCodeGenerator(AbstractCodeGenerator):
 
         else:
             self.type_error(f"Unsupported assignment target {target}")
-            raise Exception()  # unreachable
         self.graph.bp(right_end, new_node)
         self.graph.add_edge(new_node, next_label, "s.assign({\"" + left_place + "\": \"" + str(right_place) + "\"})")
         return DecoratedControlNode(f"{left_place} = {right_place}", node, left_start, next_label)

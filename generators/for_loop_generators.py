@@ -61,7 +61,6 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
             step = args[2].place
         else:
             self.type_error(f"range() expected 1, 2 or 3 arguments, got {len(args)}")
-            raise Exception()  # for the type checker
         args_start = args[0].start_node
 
         backup_stop = self.graph.fresh_var(smt_helper.IntType)
