@@ -362,7 +362,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         new_label = self.graph.fresh_label()
         self.graph.add_edge(new_node, new_label,
                             "s.assign({" + f"'{new_var}': "
-                                           f"'{receiver_type}.{node.attr}({heap}[{expr_type}.loc({expr})])'"
+                                           f"'{receiver_type}.{node.attr}(deref({expr}))'"
                             + "})")
         return DecoratedDataNode("attribute", node, new_node, new_label, new_var, field_type)
 

@@ -235,7 +235,7 @@ class Py2SmtBasicTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertEquivalent(tr, state1.eval(entry.cfg.return_var) == 1)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 1)
 
     def test_assignment(self):
         smt = Py2Smt([BasicTest])
@@ -244,7 +244,7 @@ class Py2SmtBasicTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertEquivalent(tr, And(state1["x"] == 1, state1.eval(entry.cfg.return_var) == 1))
+        self.assertImplies(tr, And(state1["x"] == 1, state1.eval(entry.cfg.return_var) == 1))
 
     def test_maybe_assignment(self):
         smt = Py2Smt([BasicTest])

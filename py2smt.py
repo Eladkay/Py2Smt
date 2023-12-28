@@ -9,7 +9,8 @@ from z3 import (z3, DatatypeSortRef, IntSort, BoolSort,
                 StringSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
-from smt_helper import get_or_create_optional_type, get_or_create_pointer_type, IntType, BoolType, StringType
+from smt_helper import get_or_create_optional_type, get_or_create_pointer_type, IntType, BoolType, StringType, \
+    is_pointer_type, get_pointed_type
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -124,7 +125,12 @@ class Py2Smt:
     def get_entry_by_name(self, name: str,
                           typ: Union[Type, DatatypeSortRef, str, None] = None) -> MethodObject:
         if isinstance(typ, DatatypeSortRef):
-            typ = [it for it in self.classes if it.__name__ == typ.name()][0]
+            if is_pointer_type(typ):
+                typ = get_pointed_type(typ)
+            types = [it for it in self.classes if it.__name__ == typ.name()]
+            if len(types) == 0:
+                raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
+            typ = types[0]
         if isinstance(typ, Type):
             typ = typ.__name__
         for cls, method in self.methods:
@@ -236,7 +242,9 @@ class Py2Smt:
         return {field: self.get_abstract_type_from_concrete(typ)
                 for field, typ in self.class_fields[cls].items()}
 
-    def get_or_create_pointer(self, ty: DatatypeSortRef) -> SortRef:
+    def get_or_create_pointer(self, ty: Union[type, DatatypeSortRef]) -> SortRef:
+        if isinstance(ty, type):
+            ty = self.class_types[ty]
         ptr = get_or_create_pointer_type(ty)
         if ptr not in self.heap_pointers:
             self.heap_pointers[ty] = f"heapptr_{ty.name()}"

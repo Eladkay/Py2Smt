@@ -74,20 +74,23 @@ def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNo
     elif isinstance(array.ast_node, _ast.Attribute):
         recv, attr = gen._process_expect_data(array.ast_node.value), array.ast_node.attr
         recv_place = recv.place
-        if not graph.system.is_field_of_class(graph.get_type(recv_place), attr):
+        recv_type = graph.get_type(recv_place)
+        pointed_type = get_pointed_type(recv_type)
+        if not graph.system.is_field_of_class(pointed_type, attr):
             gen.type_error(f"Field {attr} is not declared! "
                            f"A type annotation is needed before use.")
         graph.bp(arr_end, idx_start)
         graph.bp(idx_end, value_start)
-        recv_type = recv.value_type
-        recv_fields = graph.system.get_fields_from_class(recv_type)
+        recv_fields = graph.system.get_fields_from_class(pointed_type)
         accessors = [
-            f"{recv_type}.{field}({recv_place})"
+            f"{pointed_type}.{field}(deref({recv_place}))"
             if field != attr else new_arr
             for field in recv_fields
         ]
-        left_place = recv_place
-        right_place = f"{recv_type}.mk_{recv_type}({', '.join(map(str, accessors))})"
+        heap = graph.system.heaps[pointed_type]
+        left_place = str(heap)
+        right_place = (f"Store({heap}, {recv_type}.loc({recv_place}), "
+                       f"{pointed_type}.mk_{pointed_type}({', '.join(map(str, accessors))}))")
         left_start = arr_start
         right_end = value_end
         new_node = graph.add_node(f"{recv_place}.{attr}[{idx_place}] = {value_place}")
@@ -136,7 +139,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
             self.graph.bp(recv_end, value_start)
             recv_fields = self.graph.system.get_fields_from_class(pointed_type)
             heap = self.graph.system.heaps[pointed_type]
-            accessors = [f"{pointed_type}.{field}({heap}[{recv_type}.loc({recv_place})])" if field != attr else value.place
+            accessors = [f"{pointed_type}.{field}(deref({recv_place}))" if field != attr else value.place
                          for field in recv_fields]
             left_place = str(heap)
             right_place = (f"Store({heap}, {recv_type}.loc({recv_place}), "

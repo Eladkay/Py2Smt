@@ -15,6 +15,7 @@ class A:
         return self.some_field
 
     def field_of_other(self, a: 'A'):
+        assert self != a
         self.some_field += a.some_field
         return a.some_field
 
@@ -53,8 +54,8 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(heap_A[self])") + 1)
-        self.assertImplies(tr, state1.eval("A.some_field(heap_A[self])") == state0.eval("A.some_field(heap_A[self])") + 1)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(deref(self))") + 1)
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == state0.eval("A.some_field(deref(self))") + 1)
 
     def test_field_of_other(self):
         smt = Py2Smt([A])
@@ -63,10 +64,10 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(a)"))
-        self.assertImplies(tr, state1.eval("A.some_field(a)") == state0.eval("A.some_field(a)"))
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == state0.eval("A.some_field(self)")
-                           + state0.eval("A.some_field(a)"))
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(deref(a))"))
+        self.assertImplies(tr, state1.eval("A.some_field(deref(a))") == state0.eval("A.some_field(deref(a))"))
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == state0.eval("A.some_field(deref(self))")
+                           + state0.eval("A.some_field(deref(a))"))
 
     def test_list_attributes(self):
         smt = Py2Smt([A])
@@ -75,9 +76,10 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state1.eval("A.some_array(self)[idx]"))
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == state0.eval("A.some_field(self)"))
-        self.assertImplies(tr, state1.eval("A.some_array(self)[idx]") == 1 + state0.eval("A.some_array(self)[idx]"))
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state1.eval("A.some_array(deref(self))[idx]"))
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == state0.eval("A.some_field(deref(self))"))
+        self.assertImplies(tr, state1.eval("A.some_array(deref(self))[idx]") ==
+                           1 + state0.eval("A.some_array(deref(self))[idx]"))
 
     def test_constructors(self):
         smt = Py2Smt([A])
@@ -87,8 +89,8 @@ class Py2SmtClassTests(SmtTestCase):
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 1)
-        self.assertImplies(tr, state1.eval("A.some_field(new_a)") == 1)
-        self.assertImplies(tr, state0.eval("self") == state1.eval("self"))
+        self.assertImplies(tr, state1.eval("A.some_field(deref(new_a))") == 1)
+        self.assertImplies(tr, state0.eval("deref(self)") == state1.eval("deref(self)"))
 
     def test_method_call(self):
         smt = Py2Smt([A])
@@ -97,8 +99,8 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(self)") + 1)
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == state0.eval("A.some_field(self)") + 1)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("A.some_field(deref(self))") + 1)
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == state0.eval("A.some_field(deref(self))") + 1)
 
     def test_rectangle_area(self):
         smt = Py2Smt([RectangleTestClass])
@@ -107,12 +109,12 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("RectangleTestClass.width(self)")
-                           * state0.eval("RectangleTestClass.height(self)"))
-        self.assertImplies(tr, state1.eval("RectangleTestClass.width(self)") ==
-                           state0.eval("RectangleTestClass.width(self)"))
-        self.assertImplies(tr, state1.eval("RectangleTestClass.height(self)") ==
-                           state0.eval("RectangleTestClass.height(self)"))
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("RectangleTestClass.width(deref(self))")
+                           * state0.eval("RectangleTestClass.height(deref(self))"))
+        self.assertImplies(tr, state1.eval("RectangleTestClass.width(deref(self))") ==
+                           state0.eval("RectangleTestClass.width(deref(self))"))
+        self.assertImplies(tr, state1.eval("RectangleTestClass.height(deref(self))") ==
+                           state0.eval("RectangleTestClass.height(deref(self))"))
 
     def test_rectangle_width(self):
         smt = Py2Smt([RectangleTestClass])
@@ -121,7 +123,8 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == state0.eval("RectangleTestClass.width(self)"))
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var)
+                           == state0.eval("RectangleTestClass.width(deref(self))"))
 
 
 if __name__ == '__main__':

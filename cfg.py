@@ -72,9 +72,10 @@ class ControlFlowGraph:
         self.continue_label = None
 
         self.types = {}
-        self.report_type("self", self.system.get_or_create_pointer(self.system.class_types[cls]
-                                                                   if isinstance(cls, typing.Hashable) and
-                                                                      cls in self.system.class_types else cls))
+        self.report_type("self", self.system.get_or_create_pointer(self.system.class_types[cls])
+                                                                    if cls is not None and
+                                                                       isinstance(cls, typing.Hashable) and
+                                                                       cls in self.system.class_types else cls)
 
         self.return_var = None
 
