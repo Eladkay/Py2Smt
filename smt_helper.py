@@ -11,6 +11,10 @@ BoolType = z3.BoolSort()
 
 
 def upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
+    # todo: essentially, the problem here is that var1 can be a pointer and the upcast
+    # just changes the pointer type, but not the underlying type. What we actually need is to allocate
+    # new memory in the target sort heap and copy the value there. But that's a bit of a problem.
+    # Potential solution: change the caller to also expect new heaps and HPs.
     real_type = var1.sort()
     if isinstance(real_type, ArithSortRef) and isinstance(target_sort, BoolSortRef):
         return var1 != 0

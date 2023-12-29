@@ -142,6 +142,8 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = object_field.cfg.get_transition_relation()(state0, state1)
         returned_var = object_field.cfg.return_var
         self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(f"B.object_field(deref(self))")  # just the address
+                           == state0.eval("B.object_field(deref(self))"))
         self.assertImplies(tr, state1.eval(f"A.some_field(deref(B.object_field(deref(self))))")
                            == state0.eval("A.some_field(deref(B.object_field(deref(self))))") + 1)
         self.assertImplies(tr, state1.eval(returned_var)

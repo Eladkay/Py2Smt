@@ -7,7 +7,7 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # noinspection PyUnresolvedReferences
 # pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
-    get_or_create_pointer_by_name
+    get_or_create_pointer_by_name, get_heap_pointer_name
 
 
 class Signature:
@@ -100,8 +100,18 @@ class State:
                     ptr_sort = get_or_create_pointer_by_name(cls_name)
                     return ptr_sort.constructor(0)(loc)
 
+                def is_valid(ptr: DatatypeRef) -> ExprRef:
+                    if not isinstance(ptr, DatatypeRef):
+                        return BoolVal(True)
+                    ptr_sort = ptr.sort()
+                    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
+                    pointed_sort = ctx[pointed_sort_name]
+                    loc = ptr_sort.accessor(0, 0)(ptr)
+                    return And(0 <= loc, loc < self.locals[get_heap_pointer_name(pointed_sort)])
+
                 ctx['deref'] = deref
                 ctx['ref'] = ref
+                ctx['is_valid'] = is_valid
 
                 expr = eval(expr, globals(), ctx)
             except Exception as exp:

@@ -60,3 +60,7 @@ def __assume__(s):
 
 def __literal__(s):
     pass
+
+
+def is_valid(s):
+    pass

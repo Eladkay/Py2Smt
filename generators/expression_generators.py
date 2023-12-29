@@ -306,6 +306,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
         replaced_args = FunctionCallCodeGenerator._syntactic_param_replace(tree, params,
                                                                            [_ast.Name(it) for it in exprs])
+        # replaced_args.body[0].args_old = replaced_args.body[0].args  # for memory safety, todo
         replaced_args.body[0].args = ast.arguments()
 
         local_vars = list(it for it in called_function.cfg.types.keys() if it not in params)
@@ -385,7 +386,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         self.graph.add_edge(new_node, new_label,
                             "s.assign({" + f"'{new_var}': "
                                            f"'{receiver_type}.{node.attr}(deref({expr}))'"
-                            + "})")
+                            + "}" + f").assume('is_valid({new_var})')")
         return DecoratedDataNode("attribute", node, start, new_label, new_var, field_type)
 
 

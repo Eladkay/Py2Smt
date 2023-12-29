@@ -103,7 +103,14 @@ class CodeGenerationDispatcher:
             self.graph.return_var = None
         else:
             self.graph.return_var = self.graph.fresh_var(self.graph.system.get_type_from_annotation(returns), "ret")
-        self.process(tree)
+        # Memory safety assumption
+        new_tree = ast.Module(body=deepcopy(tree.body), type_ignores=tree.type_ignores)
+        if self.graph.name != "is_valid":
+            args = tree.body[0].args.args if hasattr(tree.body[0].args, "args") else []  # todo old_args?
+            for arg in args:
+                new_tree.body[0].body.insert(0, ast.parse(f"__assume__(__literal__('is_valid({arg.arg})'))").body[0])
+
+        self.process(new_tree)
         if self.graph.break_label is not None or self.graph.continue_label is not None:
             raise Exception("Break or continue outside of loop")
 
