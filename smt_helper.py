@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
@@ -57,24 +57,31 @@ def get_or_create_optional_type(ty: SortRef) -> DatatypeSortRef:
     return option
 
 
-def get_or_create_pointer_type(ty: SortRef) -> DatatypeSortRef:
-    if ty in POINTER_TYPES:
-        return POINTER_TYPES[ty]
-    type_name = _cleanup_type_name(str(ty))
-    option = Datatype(f"{type_name}Pointer")
-    option.declare(f'ptr_to_{type_name}', ('loc', IntType))
+def get_or_create_pointer(ty: Union[type, DatatypeSortRef]) -> SortRef:
+    type_name = ty.name() if isinstance(ty, DatatypeSortRef) else ty.__name__
+    ptr = get_or_create_pointer_by_name(type_name)
+    return ptr
+
+
+def get_heap_pointer_name(ty: Union[type, SortRef]) -> str:
+    type_name = ty.name() if isinstance(ty, SortRef) else ty.__name__
+    return f"__heapptr_{type_name}__"
+
+
+def get_heap_name(ty: Union[type, SortRef]) -> str:
+    type_name = ty.name() if isinstance(ty, SortRef) else ty.__name__
+    return f"__heap_{type_name}__"
+
+
+def get_or_create_pointer_by_name(type_name: str) -> DatatypeSortRef:
+    if type_name in POINTER_TYPES:
+        return POINTER_TYPES[type_name]
+    option = Datatype(f"__{type_name}Pointer__")
+    option.declare(f'ptr', ('loc', IntType))
 
     option = option.create()
-    POINTER_TYPES[ty] = option
+    POINTER_TYPES[type_name] = option
     return option
-
-
-def get_pointed_type(ptr: DatatypeSortRef) -> SortRef:
-    return [k for k, v in POINTER_TYPES.items() if v == ptr][0]
-
-
-def is_pointer_type(ty: SortRef) -> bool:
-    return ty in POINTER_TYPES.values()
 
 
 def singleton_list(t: Any) -> SeqRef:
@@ -85,3 +92,7 @@ def singleton_list(t: Any) -> SeqRef:
     if isinstance(t, bool):
         t = z3.BoolVal(t)
     return z3.Unit(t)
+
+
+def is_pointer_type(ty: SortRef) -> bool:
+    return ty in POINTER_TYPES.values()

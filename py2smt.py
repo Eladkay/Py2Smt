@@ -5,12 +5,11 @@ from _ast import AST, expr, Constant
 from textwrap import dedent
 from typing import List, Union, Type, Callable, Any, Dict
 
-from z3 import (z3, DatatypeSortRef, IntSort, BoolSort,
-                StringSort, ArraySort, SetSort, SortRef, SeqSort)
+from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
-from smt_helper import get_or_create_optional_type, get_or_create_pointer_type, IntType, BoolType, StringType, \
-    is_pointer_type, get_pointed_type
+from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_or_create_pointer, POINTER_TYPES, \
+    get_heap_pointer_name, get_heap_name, is_pointer_type
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -35,7 +34,10 @@ class MethodObject:
         self.system = system
         self.name = name
         self.ast = tree
-        self.args = args
+        if name == "__init__":
+            self.args = args[1:]
+        else:
+            self.args = args
         self.cls = cls
         self._sig = None
         self._cfg = None
@@ -63,11 +65,11 @@ class MethodObject:
     @staticmethod
     def create_empty_constructor(system: 'Py2Smt', ty: Type,
                                  fields: Dict[str, SortRef]) -> 'MethodObject':
-        body = "return self" if not fields else \
+        body = "pass" if not fields else \
             '\n\t'.join([f'self.{f} = {ControlFlowGraph.get_place_of_default_value(ty)}'
-                         for f, ty in fields.items()]) + "\n\treturn self"
-        empty_constructor = f"""def __init__(self) -> {ty.__name__}:\n\t{body}"""
-        return MethodObject("__init__", ast.parse(empty_constructor), [], ty, system)
+                         for f, ty in fields.items()])
+        empty_constructor = f"""def __init__(self):\n\t{body}"""
+        return MethodObject("__init__", ast.parse(empty_constructor), ['self'], ty, system)
 
 
 class Py2Smt:
@@ -77,11 +79,8 @@ class Py2Smt:
         self.class_types = {}
         self.depth_bound = depth_bound
 
-        self.heaps = {}
-        self.heap_pointers = {}
-
         self._abstract_types = {}
-        self._get_class_fields()
+        self._discover_class_fields()
 
         # methods from the classes
         self.methods = {(cls.__name__, method):
@@ -126,7 +125,7 @@ class Py2Smt:
                           typ: Union[Type, DatatypeSortRef, str, None] = None) -> MethodObject:
         if isinstance(typ, DatatypeSortRef):
             if is_pointer_type(typ):
-                typ = get_pointed_type(typ)
+                typ = self.get_pointed_type(typ)
             types = [it for it in self.classes if it.__name__ == typ.name()]
             if len(types) == 0:
                 raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
@@ -155,7 +154,7 @@ class Py2Smt:
         self.methods[(cls, name)] = ret
         return ret
 
-    def _get_class_fields(self):
+    def _discover_class_fields(self):
         for cls in self.classes:
             node = ast.parse(dedent(inspect.getsource(cls)))
             annotations = [it for it in node.body[0].body if isinstance(it, ast.AnnAssign)]
@@ -189,7 +188,7 @@ class Py2Smt:
         if typename in base_types:
             return base_types[typename]
         if typename in [cls.__name__ for cls in self.classes]:
-            return self.get_or_create_pointer([cls for cls in self.classes if cls.__name__ == typename][0])
+            return get_or_create_pointer([cls for cls in self.classes if cls.__name__ == typename][0])
         raise ValueError("Unknown type")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
@@ -242,11 +241,12 @@ class Py2Smt:
         return {field: self.get_abstract_type_from_concrete(typ)
                 for field, typ in self.class_fields[cls].items()}
 
-    def get_or_create_pointer(self, ty: Union[type, DatatypeSortRef]) -> SortRef:
-        if isinstance(ty, type):
-            ty = self.class_types[ty]
-        ptr = get_or_create_pointer_type(ty)
-        if ptr not in self.heap_pointers:
-            self.heap_pointers[ty] = f"heapptr_{ty.name()}"
-            self.heaps[ty] = f"heap_{ty.name()}"  # todo is this wrong?
-        return ptr
+    def get_pointed_type(self, ptr: DatatypeSortRef) -> SortRef:
+        tyname = [k for k, v in POINTER_TYPES.items() if v == ptr][0]
+        return [v for v in self.class_types.values() if v.name() == tyname][0]
+
+    def is_heap_pointer_name(self, name: str) -> bool:
+        return any(name == get_heap_pointer_name(cls) for cls in self.class_types)
+
+    def is_heap_name(self, ty: SortRef) -> bool:
+        return any(ty == get_heap_name(cls) for cls in self.class_types)

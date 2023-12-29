@@ -267,7 +267,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         params = called_function.args
 
         if len(params) == len(exprs) + 1:
-            if params[0] != "self":
+            if params[0] != "self" or receiver is None:
                 self.type_error(f"Parameters and expressions number mismatch in call to {name}")
             params = params[1:]
         elif len(params) != len(exprs):
@@ -277,13 +277,15 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             if len(exprs) != 1:
                 self.type_error("Literal expression should have exactly one argument")
             s = exprs[0]
-            if not isinstance(s, _ast.Constant) or not isinstance(s.value, str):
+            if not isinstance(s, str):
                 self.type_error("Literal expression should have a constant string argument")
-            new_node = self.graph.add_node(f"return {s.value}")
+            new_node = self.graph.add_node(f"return {s}")
+            s = (s.removeprefix("\\").removeprefix("\"").removeprefix("'")
+                 .removesuffix("\"").removesuffix("'").removesuffix("\\"))
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
             self.graph.bp(ends[0], new_node)
-            return DecoratedDataNode("literal_call", node, new_node, new_label, s.value, None)
+            return DecoratedDataNode("literal_call", node, new_node, new_label, s, None)
 
         if called_function.name == "__assume__":
             if len(exprs) != 1:
@@ -294,7 +296,15 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             self.graph.bp(ends[0], new_node)
             return DecoratedControlNode("assume", node, starts[0], new_label)
 
-        replaced_args = FunctionCallCodeGenerator._syntactic_param_replace(called_function.ast, params,
+        tree = ast.Module(body=called_function.ast.body, type_ignores=called_function.ast.type_ignores)
+        if called_function.name == "__init__":
+            # Allocate memory
+            tree.body[0].body.insert(0, ast.parse(f"self = __literal__('ref({get_heap_pointer_name(called_function.cls)}, "
+                                                  f"\\\\\"{called_function.cls.__name__}\\\\\")')").body[0])
+            tree.body[0].body.insert(1, ast.parse(f"{get_heap_pointer_name(called_function.cls)} += 1").body[0])
+            tree.body[0].body.append(ast.parse(f"return self").body[0])
+
+        replaced_args = FunctionCallCodeGenerator._syntactic_param_replace(tree, params,
                                                                            [_ast.Name(it) for it in exprs])
         replaced_args.body[0].args = ast.arguments()
 
@@ -310,6 +320,11 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
         new_cfg = ControlFlowGraph(self.graph.system, replaced_receiver.body[0].name, called_function.cls)
         new_cfg.types.update({f"{name}_{k}": v for k, v in called_function.cfg.types.items()})
+        new_cfg.types.update({k: v for k, v in self.graph.types.items() if k != "self"})
+        # todo - If I have conflicting variable names this will cause an issue.
+        # Also, what if I actually want to pass self?
+        if receiver is not None:
+            new_cfg.report_type("self", self.graph.get_type(receiver))
 
         new_cfg.var_count = self.graph.var_count
         new_dispatcher = CodeGenerationDispatcher(new_cfg)
@@ -322,13 +337,21 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         func_start, func_end = self.graph.add_all(new_cfg)
         if len(args) > 0:
             self.graph.bp(ends[-1], func_start)
-        self.graph.types.update(new_cfg.types)
+
+        new_types_without_self = {k: v for k, v in new_cfg.types.items() if k != "self"}
+        assert not any(k in self.graph.types and self.graph.types[k] != new_types_without_self[k]
+                       for k in new_types_without_self.keys())
+        self.graph.types.update(new_types_without_self)
+
         new_label = self.graph.fresh_label()
         if new_cfg.return_var is not None:
             new_var = new_cfg.return_var
             new_node = self.graph.add_node(f"{new_var} = {name}({', '.join(map(str, exprs))})")
         else:
-            new_var = "0"
+            if called_function.name == "__init__":
+                new_var = tagged_local_vars['self'].id
+            else:
+                new_var = "0"
             new_node = self.graph.add_node(f"{name}({', '.join(map(str, exprs))})")
         self.graph.add_edge(new_node, new_label)
         self.graph.bp(func_end, new_node)
@@ -347,7 +370,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         if not is_pointer_type(expr_type):
             self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is not a pointer type")
 
-        receiver_type = get_pointed_type(expr_type)
+        receiver_type = self.graph.system.get_pointed_type(expr_type)
         if not self.graph.system.is_field_of_class(receiver_type, node.attr):
             # try finding it as a method: if it's a method, no node needs to be created for acquiring the method
             receiver_type = receiver_type.name()
@@ -356,7 +379,6 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
             self.type_error(f"Cannot find field {node.attr} in {receiver_type}")
         field_type = self.graph.system.get_type_from_field(receiver_type, node.attr)
         new_var = self.graph.fresh_var(field_type)
-        heap = self.graph.system.heaps[receiver_type]
         new_node = self.graph.add_node(f"{new_var} = {expr}.{node.attr}")
         self.graph.bp(end, new_node)
         new_label = self.graph.fresh_label()
@@ -364,7 +386,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
                             "s.assign({" + f"'{new_var}': "
                                            f"'{receiver_type}.{node.attr}(deref({expr}))'"
                             + "})")
-        return DecoratedDataNode("attribute", node, new_node, new_label, new_var, field_type)
+        return DecoratedDataNode("attribute", node, start, new_label, new_var, field_type)
 
 
 @handles(ast.List)

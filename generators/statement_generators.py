@@ -7,7 +7,7 @@ from z3 import ArraySortRef, SeqSortRef
 from cfg import ControlFlowGraph, ControlFlowNode
 from generators.generators import AbstractCodeGenerator, DecoratedAst, handles, \
     DecoratedControlNode, DecoratedDataNode
-from smt_helper import IntType, is_pointer_type, get_pointed_type
+from smt_helper import IntType, get_heap_name, is_pointer_type
 
 
 @handles(_ast.AugAssign)
@@ -75,7 +75,7 @@ def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNo
         recv, attr = gen._process_expect_data(array.ast_node.value), array.ast_node.attr
         recv_place = recv.place
         recv_type = graph.get_type(recv_place)
-        pointed_type = get_pointed_type(recv_type)
+        pointed_type = graph.system.get_pointed_type(recv_type)
         if not graph.system.is_field_of_class(pointed_type, attr):
             gen.type_error(f"Field {attr} is not declared! "
                            f"A type annotation is needed before use.")
@@ -87,7 +87,7 @@ def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNo
             if field != attr else new_arr
             for field in recv_fields
         ]
-        heap = graph.system.heaps[pointed_type]
+        heap = get_heap_name(pointed_type)
         left_place = str(heap)
         right_place = (f"Store({heap}, {recv_type}.loc({recv_place}), "
                        f"{pointed_type}.mk_{pointed_type}({', '.join(map(str, accessors))}))")
@@ -130,7 +130,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
 
             if not is_pointer_type(recv_type):
                 self.type_error(f"Variable {recv_place} is not a pointer!")
-            pointed_type = get_pointed_type(recv_type)
+            pointed_type = self.graph.system.get_pointed_type(recv_type)
 
             if not self.graph.system.is_field_of_class(pointed_type, attr):
                 self.type_error(f"Field {attr} is not declared! "
@@ -138,7 +138,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
 
             self.graph.bp(recv_end, value_start)
             recv_fields = self.graph.system.get_fields_from_class(pointed_type)
-            heap = self.graph.system.heaps[pointed_type]
+            heap = get_heap_name(pointed_type)
             accessors = [f"{pointed_type}.{field}(deref({recv_place}))" if field != attr else value.place
                          for field in recv_fields]
             left_place = str(heap)

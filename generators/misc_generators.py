@@ -5,11 +5,14 @@ do not fall under any other category, but are nonetheless supported.
 
 import _ast
 import ast
+import typing
 from _ast import AST
 
 from cfg import ControlFlowGraph
 from generators.generators import AbstractCodeGenerator, DecoratedLeafNode, handles, \
     DecoratedControlNode, DecoratedDataNode
+from smt_helper import get_or_create_pointer
+
 
 # List of nodes that do not require any code generation.
 nop = [ast.arguments, ast.Load, ast.Store, ast.FunctionDef, ast.Tuple]
@@ -26,8 +29,15 @@ class NopCodeGenerator(AbstractCodeGenerator):
 class ArgCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedLeafNode:
-        self.graph.report_type(node.arg,
-                               self.graph.system.get_type_from_annotation(node.annotation))
+        if node.annotation is not None:
+            self.graph.report_type(node.arg,
+                                   self.graph.system.get_type_from_annotation(node.annotation))
+        elif node.arg == "self":
+            self.graph.report_type("self", get_or_create_pointer(self.graph.system.class_types[self.graph.cls])
+            if self.graph.cls is not None and
+               isinstance(self.graph.cls, typing.Hashable) and
+               self.graph.cls in self.graph.system.class_types else self.graph.cls)
+
         return DecoratedLeafNode("arg", node, {"arg": node.arg})
 
 

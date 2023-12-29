@@ -77,14 +77,14 @@ class Py2SmtConformanceTests(SmtTestCase):
         returned_var = state1[writing_method.cfg.return_var]
         self.assertSat(tr)
         self.assertImplies(tr, returned_var == 2)
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == 1)
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == 1)
 
         reading_method = self.system.get_entry_by_name("some_reading_method", A)
         state0, state1 = reading_method.make_state(), reading_method.make_state("'")
         tr = reading_method.cfg.get_transition_relation()(state0, state1)
         returned_var = state1[reading_method.cfg.return_var]
         self.assertSat(tr)
-        self.assertImplies(tr, returned_var == state0.eval("A.some_field(self)"))
+        self.assertImplies(tr, returned_var == state0.eval("A.some_field(deref(self))"))
 
         reading_writing_method = self.system.get_entry_by_name("some_reading_writing_method", A)
         state0, state1 = reading_writing_method.make_state(), reading_writing_method.make_state("'")
@@ -92,7 +92,7 @@ class Py2SmtConformanceTests(SmtTestCase):
         returned_var = state1[reading_writing_method.cfg.return_var]
         self.assertSat(tr)
         self.assertImplies(tr, returned_var == 1)
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == 1)
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == 1)
 
         overridden_reading_writing_method = self.system.get_entry_by_name("some_overridden_reading_writing_method", A)
         state0, state1 = overridden_reading_writing_method.make_state(), \
@@ -100,8 +100,8 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = overridden_reading_writing_method.cfg.get_transition_relation()(state0, state1)
         returned_var = state1[overridden_reading_writing_method.cfg.return_var]
         self.assertSat(tr)
-        self.assertImplies(tr, returned_var == 1 + state0.eval("A.some_field(self)"))
-        self.assertImplies(tr, state1.eval("A.some_field(self)") == 1 + state0.eval("A.some_field(self)"))
+        self.assertImplies(tr, returned_var == 1 + state0.eval("A.some_field(deref(self))"))
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == 1 + state0.eval("A.some_field(deref(self))"))
 
     def test_conformance1(self):
         other_new_method = self.system.get_entry_by_name("other_new_method", B)
@@ -109,9 +109,10 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = other_new_method.cfg.get_transition_relation()(state0, state1)
         returned_var = state1[other_new_method.cfg.return_var]
         self.assertSat(tr)
-        self.assertImplies(tr, returned_var == 3 + state0.eval("B.other_field(self)"))
-        self.assertImplies(tr, state1.eval("B.some_field(self)") == 1)
-        self.assertImplies(tr, state1.eval("B.other_field(self)") == state0.eval("B.other_field(self)") + 1)
+        self.assertImplies(tr, returned_var == 3 + state0.eval("B.other_field(deref(self))"))
+        self.assertImplies(tr, state1.eval("B.some_field(deref(self))") == 1)
+        self.assertImplies(tr, state1.eval("B.other_field(deref(self))") ==
+                           state0.eval("B.other_field(deref(self))") + 1)
 
     def test_conformance2(self):
         # returned' = 3 + other_field, some_field' = 3 + other_field, other_field' = other_field + 1
@@ -120,9 +121,11 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = other_new_method.cfg.get_transition_relation()(state0, state1)
         returned_var = state1[other_new_method.cfg.return_var]
         self.assertSat(tr)
-        self.assertImplies(tr, returned_var == 4 + state0.eval("B.other_field(self)"))
-        self.assertImplies(tr, state1.eval("B.some_field(self)") == 4 + state0.eval("B.other_field(self)"))
-        self.assertImplies(tr, state1.eval("B.other_field(self)") == state0.eval("B.other_field(self)") + 1)
+        self.assertImplies(tr, returned_var == 4 + state0.eval("B.other_field(deref(self))"))
+        self.assertImplies(tr, state1.eval("B.some_field(deref(self))")
+                           == 4 + state0.eval("B.other_field(deref(self))"))
+        self.assertImplies(tr, state1.eval("B.other_field(deref(self))")
+                           == state0.eval("B.other_field(deref(self))") + 1)
 
     def test_upcast(self):
         upcast = self.system.get_entry_by_name("upcast", B)
@@ -130,7 +133,8 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = upcast.cfg.get_transition_relation()(state0, state1)
         returned_var = upcast.cfg.return_var
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(f"A.some_field({returned_var})") == state0.eval("B.some_field(self)"))
+        self.assertImplies(tr, state1.eval(f"A.some_field(deref({returned_var}))")
+                           == state0.eval("B.some_field(deref(self))"))
 
     def test_object_field(self):
         object_field = self.system.get_entry_by_name("object_field", B)
@@ -138,10 +142,10 @@ class Py2SmtConformanceTests(SmtTestCase):
         tr = object_field.cfg.get_transition_relation()(state0, state1)
         returned_var = object_field.cfg.return_var
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(f"A.some_field(B.object_field(self))")
-                           == state0.eval("A.some_field(B.object_field(self))") + 1)
+        self.assertImplies(tr, state1.eval(f"A.some_field(deref(B.object_field(deref(self))))")
+                           == state0.eval("A.some_field(deref(B.object_field(deref(self))))") + 1)
         self.assertImplies(tr, state1.eval(returned_var)
-                           == state0.eval("A.some_field(B.object_field(self))") + 1)
+                           == state0.eval("A.some_field(deref(B.object_field(deref(self))))") + 1)
 
     def test_object_field2(self):
         object_field = self.system.get_entry_by_name("object_field2", B)

@@ -5,9 +5,9 @@ from typing import Callable, Tuple, List, Any, Type
 
 import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
-                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef)
+                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort)
 
-from smt_helper import IntType
+from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name
 from symbolic_interp import State, Signature
 
 
@@ -58,7 +58,6 @@ class ControlFlowGraph:
         self.nodes = set()
         self.edges = set()
         self.labels = set()
-        self.actions = set()
 
         self.start = self.add_node("start")
 
@@ -72,10 +71,10 @@ class ControlFlowGraph:
         self.continue_label = None
 
         self.types = {}
-        self.report_type("self", self.system.get_or_create_pointer(self.system.class_types[cls])
-                                                                    if cls is not None and
-                                                                       isinstance(cls, typing.Hashable) and
-                                                                       cls in self.system.class_types else cls)
+        self.report_type("self", get_or_create_pointer(self.system.class_types[cls])
+        if cls is not None and
+           isinstance(cls, typing.Hashable) and
+           cls in self.system.class_types else cls)  # TODO - I want to remove this
 
         self.return_var = None
 
@@ -119,10 +118,9 @@ class ControlFlowGraph:
         if value in self.types:
             return self.types[value]
 
-        heap_pointers_by_name = {str(it): it for it in self.system.heap_pointers.values()}
-        if value in heap_pointers_by_name:
-            return heap_pointers_by_name[value]
-        heap_by_name = {str(it): it for it in self.system.heaps.values()}
+        if self.system.is_heap_pointer_name(value):
+            return IntType
+        heap_by_name = {get_heap_name(it): ArraySort(IntType, it) for it in self.system.class_types.values()}
         if value in heap_by_name:
             return heap_by_name[value]
 
@@ -149,8 +147,6 @@ class ControlFlowGraph:
     def report_type(self, var: str, ty: Any):
         if ty is None:
             return
-        if isinstance(ty, str):
-            ty = eval(ty)
         new_type = self.system.class_types[ty] if isinstance(ty, typing.Hashable) and \
                                                   ty in self.system.class_types else ty
         if var in self.types and self.types[var] != new_type:
@@ -316,16 +312,16 @@ class ControlFlowGraph:
         self.edges.update(to_add)
 
     def get_signature(self):
-        heap_pointers = {str(it): IntType for it in self.system.heap_pointers.values()}
-        heaps = {str(it): z3.ArraySort(IntType, k) for k, it in self.system.heaps.items()}
+        heap_pointers = {get_heap_pointer_name(it): IntType for it in self.system.class_types.values()}
+        heaps = {get_heap_name(it): z3.ArraySort(IntType, it) for it in self.system.class_types.values()}
         sig = Signature({**self.types, **heap_pointers, **heaps})
         sig.use({str(ty): ty for k, ty in {**self.system.class_types}.items()})
         return sig
 
     def has_type(self, expr: Any) -> bool:
         return expr is not None and ControlFlowGraph.get_literal_type(expr) is not None or \
-            expr in self.types or expr in [str(it) for it in self.system.heap_pointers.values()] \
-            or expr in [str(it) for it in self.system.heaps.values()]
+            expr in self.types or self.system.is_heap_pointer_name(str(expr)) \
+            or self.system.is_heap_name(str(expr))
 
     @property
     def return_type(self):

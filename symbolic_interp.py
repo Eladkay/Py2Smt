@@ -6,7 +6,8 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # we need singleton_list
 # noinspection PyUnresolvedReferences
 # pylint: disable=unused-import
-from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_pointed_type
+from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
+    get_or_create_pointer_by_name
 
 
 class Signature:
@@ -91,9 +92,16 @@ class State:
 
                 def deref(ptr: DatatypeRef) -> ExprRef:
                     ptr_sort = ptr.sort()
-                    pointed_sort = get_pointed_type(ptr_sort)
-                    return self.locals[f"heap_{pointed_sort}"][ptr_sort.accessor(0, 0)(ptr)]
+                    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
+                    pointed_sort = ctx[pointed_sort_name]
+                    return self.locals[get_heap_name(pointed_sort)][ptr_sort.accessor(0, 0)(ptr)]
+
+                def ref(loc: ExprRef, cls_name: str) -> DatatypeRef:
+                    ptr_sort = get_or_create_pointer_by_name(cls_name)
+                    return ptr_sort.constructor(0)(loc)
+
                 ctx['deref'] = deref
+                ctx['ref'] = ref
 
                 expr = eval(expr, globals(), ctx)
             except Exception as exp:
