@@ -2,7 +2,7 @@ from typing import Any, Union
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
-                DatatypeSortRef, If, Datatype, SeqRef, StringVal)
+                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef)
 
 
 IntType = z3.IntSort()
@@ -10,11 +10,14 @@ StringType = z3.StringSort()
 BoolType = z3.BoolSort()
 
 
+def upcast_pointer(ptr1: DatatypeRef, target_pointer_sort: DatatypeSortRef, source_heap: ArrayRef) -> ExprRef:
+    loc = ptr1.sort().accessor(0, 0)(ptr1)
+    expr = source_heap[loc]
+    pointed_sort = get_pointed_type(target_pointer_sort)
+    return upcast_expr(expr, pointed_sort)
+
+
 def upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
-    # todo: essentially, the problem here is that var1 can be a pointer and the upcast
-    # just changes the pointer type, but not the underlying type. What we actually need is to allocate
-    # new memory in the target sort heap and copy the value there. But that's a bit of a problem.
-    # Potential solution: change the caller to also expect new heaps and HPs.
     real_type = var1.sort()
     if isinstance(real_type, ArithSortRef) and isinstance(target_sort, BoolSortRef):
         return var1 != 0
@@ -40,6 +43,8 @@ OPTIONAL_TYPES = {}
 
 POINTER_TYPES = {}
 
+CONCRETE_TO_PTR = {}
+
 
 def _cleanup_type_name(ty: str) -> str:
     ty = ty.replace(" ", "")
@@ -61,9 +66,12 @@ def get_or_create_optional_type(ty: SortRef) -> DatatypeSortRef:
     return option
 
 
-def get_or_create_pointer(ty: Union[type, DatatypeSortRef]) -> SortRef:
-    type_name = ty.name() if isinstance(ty, DatatypeSortRef) else ty.__name__
+def get_or_create_pointer(ty: DatatypeSortRef) -> SortRef:
+    if ty in CONCRETE_TO_PTR:
+        return CONCRETE_TO_PTR[ty]
+    type_name = ty.name()
     ptr = get_or_create_pointer_by_name(type_name)
+    CONCRETE_TO_PTR[ty] = ptr
     return ptr
 
 
@@ -100,3 +108,7 @@ def singleton_list(t: Any) -> SeqRef:
 
 def is_pointer_type(ty: SortRef) -> bool:
     return ty in POINTER_TYPES.values()
+
+
+def get_pointed_type(ptr: DatatypeSortRef) -> SortRef:
+    return {v: k for k, v in CONCRETE_TO_PTR.items()}[ptr]

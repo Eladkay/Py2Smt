@@ -7,7 +7,7 @@ from z3 import ArraySortRef, SeqSortRef
 from cfg import ControlFlowGraph, ControlFlowNode
 from generators.generators import AbstractCodeGenerator, DecoratedAst, handles, \
     DecoratedControlNode, DecoratedDataNode
-from smt_helper import IntType, get_heap_name, is_pointer_type
+from smt_helper import IntType, get_heap_name, is_pointer_type, get_pointed_type
 
 
 @handles(_ast.AugAssign)
@@ -75,7 +75,7 @@ def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNo
         recv, attr = gen._process_expect_data(array.ast_node.value), array.ast_node.attr
         recv_place = recv.place
         recv_type = graph.get_type(recv_place)
-        pointed_type = graph.system.get_pointed_type(recv_type)
+        pointed_type = get_pointed_type(recv_type)
         if not graph.system.is_field_of_class(pointed_type, attr):
             gen.type_error(f"Field {attr} is not declared! "
                            f"A type annotation is needed before use.")
@@ -130,7 +130,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
 
             if not is_pointer_type(recv_type):
                 self.type_error(f"Variable {recv_place} is not a pointer!")
-            pointed_type = self.graph.system.get_pointed_type(recv_type)
+            pointed_type = get_pointed_type(recv_type)
 
             if not self.graph.system.is_field_of_class(pointed_type, attr):
                 self.type_error(f"Field {attr} is not declared! "

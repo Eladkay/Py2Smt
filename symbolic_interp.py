@@ -7,7 +7,7 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # noinspection PyUnresolvedReferences
 # pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
-    get_or_create_pointer_by_name, get_heap_pointer_name
+    get_or_create_pointer_by_name, get_heap_pointer_name, is_pointer_type, get_pointed_type, upcast_pointer
 
 
 class Signature:
@@ -58,10 +58,28 @@ class State:
                 target_value = new_values[target] if target in new_values else cloned.locals[target]
                 computed_value = self.eval(value)
                 if isinstance(target_value, ExprRef) and isinstance(computed_value, ExprRef) and \
-                        isinstance(target_value.sort(), DatatypeSortRef) and  \
-                        isinstance(computed_value.sort(), DatatypeSortRef) and  \
+                        isinstance(target_value.sort(), DatatypeSortRef) and \
+                        isinstance(computed_value.sort(), DatatypeSortRef) and \
                         target_value.sort() != computed_value.sort():
-                    computed_value = upcast_expr(computed_value, target_value.sort())
+                    if is_pointer_type(target_value.sort()):
+                        assert is_pointer_type(computed_value.sort()) and isinstance(computed_value, DatatypeRef)
+                        # latter is for type checker, actually implied by the first one
+                        source_pointed_sort = get_pointed_type(computed_value.sort())
+                        target_pointed_sort = get_pointed_type(target_value.sort())
+                        upcast_value = upcast_pointer(computed_value, target_value.sort(),
+                                                      self.locals[get_heap_name(source_pointed_sort)])
+                        assert get_heap_name(target_pointed_sort) not in new_values
+                        assert get_heap_pointer_name(target_pointed_sort) not in new_values
+                        target_heap = self.locals[get_heap_name(target_pointed_sort)]
+                        target_hp = self.locals[get_heap_pointer_name(target_pointed_sort)]
+                        new_values[get_heap_name(target_pointed_sort)] = \
+                            Store(target_heap, target_hp, upcast_value)
+                        new_values[get_heap_pointer_name(target_pointed_sort)] = \
+                            target_hp + 1
+                        upcast_value = target_value.sort().constructor(0)(target_hp)
+                    else:
+                        upcast_value = upcast_expr(computed_value, target_value.sort())
+                    computed_value = upcast_value
                 new_values[target] = computed_value
             cloned.locals.update(new_values)
         except Exception as exp:

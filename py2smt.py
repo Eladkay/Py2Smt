@@ -8,8 +8,8 @@ from typing import List, Union, Type, Callable, Any, Dict
 from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
-from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_or_create_pointer, POINTER_TYPES, \
-    get_heap_pointer_name, get_heap_name, is_pointer_type
+from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, is_pointer_type, get_or_create_pointer_by_name, \
+    get_pointed_type
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -125,7 +125,7 @@ class Py2Smt:
                           typ: Union[Type, DatatypeSortRef, str, None] = None) -> MethodObject:
         if isinstance(typ, DatatypeSortRef):
             if is_pointer_type(typ):
-                typ = self.get_pointed_type(typ)
+                typ = get_pointed_type(typ)
             types = [it for it in self.classes if it.__name__ == typ.name()]
             if len(types) == 0:
                 raise ValueError(f"Method {f'{typ}.' if typ is not None else ''}{name} not represented")
@@ -188,7 +188,7 @@ class Py2Smt:
         if typename in base_types:
             return base_types[typename]
         if typename in [cls.__name__ for cls in self.classes]:
-            return get_or_create_pointer([cls for cls in self.classes if cls.__name__ == typename][0])
+            return get_or_create_pointer_by_name(typename)
         raise ValueError("Unknown type")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
@@ -240,10 +240,6 @@ class Py2Smt:
             cls = [it for it in self.classes if it.__name__ == cls.name()][0]
         return {field: self.get_abstract_type_from_concrete(typ)
                 for field, typ in self.class_fields[cls].items()}
-
-    def get_pointed_type(self, ptr: DatatypeSortRef) -> SortRef:
-        tyname = [k for k, v in POINTER_TYPES.items() if v == ptr][0]
-        return [v for v in self.class_types.values() if v.name() == tyname][0]
 
     def is_heap_pointer_name(self, name: str) -> bool:
         return any(name == get_heap_pointer_name(cls) for cls in self.class_types)

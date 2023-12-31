@@ -98,7 +98,8 @@ class CodeGenerationDispatcher:
         assert isinstance(tree, ast.Module)
         returns = tree.body[0].returns
         if self.graph.name == "__init__":
-            self.graph.return_var = self.graph.fresh_var(get_or_create_pointer(self.graph.cls), "ret")
+            typ = self.graph.system.class_types[self.graph.cls]
+            self.graph.return_var = self.graph.fresh_var(get_or_create_pointer(typ), "ret")
         elif returns is None:
             self.graph.return_var = None
         else:
