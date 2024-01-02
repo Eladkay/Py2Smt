@@ -1,6 +1,7 @@
 import ast
 import inspect
 import sys
+import typing
 from _ast import AST, expr, Constant
 from textwrap import dedent
 from typing import List, Union, Type, Callable, Any, Dict
@@ -80,6 +81,7 @@ class Py2Smt:
         self.depth_bound = depth_bound
 
         self._abstract_types = {}
+        self._discover_class_generic_vars()
         self._discover_class_fields()
 
         # methods from the classes
@@ -170,6 +172,7 @@ class Py2Smt:
                 superclasses.append(superclass)
                 queue.extend(superclass.__bases__)
             superclasses.remove(object)  # trivial
+            superclasses = [it for it in superclasses if it.__module__ != typing.__name__]
             self.class_fields[cls].update({field: self.class_fields[superclass][field]
                                            for superclass in superclasses
                                            for field in self.class_fields[superclass]})
@@ -189,6 +192,8 @@ class Py2Smt:
             return base_types[typename]
         if typename in [cls.__name__ for cls in self.classes]:
             return get_or_create_pointer_by_name(typename)
+        if typename in self.generic_vars:  # todo: generic vars are global
+            return z3.DeclareSort(typename)  # cache this?
         raise ValueError("Unknown type")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
@@ -246,3 +251,14 @@ class Py2Smt:
 
     def is_heap_name(self, ty: SortRef) -> bool:
         return any(ty == get_heap_name(cls) for cls in self.class_types)
+
+    def _discover_class_generic_vars(self):
+        self.generic_vars = set()
+        for cls in self.classes:
+            node = ast.parse(dedent(inspect.getsource(cls)))
+            cls = node.body[0]
+            if not hasattr(cls, "type_params"):
+                continue
+            # noinspection PyUnresolvedReferences
+            for param in cls.type_params:
+                self.generic_vars.add(param.name)

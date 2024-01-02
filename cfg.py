@@ -93,6 +93,8 @@ class ControlFlowGraph:
             return f"Empty({ControlFlowGraph.type_to_place_string(ty)})"
         if ty.name().endswith("Option"):
             return f"{ty}.none"
+        if isinstance(ty, SortRef):  # assume it is a generic variable, todo?
+            return f"{get_or_create_pointer(ty)}.loc(0)"
         raise NotImplementedError(f"Cannot get default value for type {ty}")
 
     @staticmethod
@@ -142,6 +144,8 @@ class ControlFlowGraph:
             return "StringSort()"
         if isinstance(ty, SeqSortRef):
             return f"SeqSort({ControlFlowGraph.type_to_place_string(ty.basis())})"
+        if isinstance(ty, SortRef):  # assume it is a generic variable, todo?
+            return f"DefineSort({ty.name()})"
         raise NotImplementedError(f"Cannot get place string for type {ty}")
 
     def report_type(self, var: str, ty: Any):

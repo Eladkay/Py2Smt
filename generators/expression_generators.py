@@ -371,7 +371,8 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         if not is_pointer_type(expr_type):
             self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is not a pointer type")
 
-        receiver_type = get_pointed_type(expr_type)
+        receiver_type = get_pointed_type(expr_type, {get_or_create_pointer(ty): ty
+                                                     for ty in self.graph.system.class_types.values()})
         if not self.graph.system.is_field_of_class(receiver_type, node.attr):
             # try finding it as a method: if it's a method, no node needs to be created for acquiring the method
             receiver_type = receiver_type.name()

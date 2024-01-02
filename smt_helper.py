@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Union, Dict, Optional
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
@@ -110,5 +110,10 @@ def is_pointer_type(ty: SortRef) -> bool:
     return ty in POINTER_TYPES.values()
 
 
-def get_pointed_type(ptr: DatatypeSortRef) -> SortRef:
-    return {v: k for k, v in CONCRETE_TO_PTR.items()}[ptr]
+def get_pointed_type(ptr: DatatypeSortRef, fallback: Optional[Dict] = None) -> SortRef:
+    ptr_to_concrete = {v: k for k, v in CONCRETE_TO_PTR.items()}
+    if ptr in ptr_to_concrete:
+        return ptr_to_concrete[ptr]
+    if fallback is not None:
+        return fallback[ptr]
+    raise ValueError(f"Could not find pointed type for {ptr}!")
