@@ -42,13 +42,15 @@ class Signature:
 
 
 class State:
-    def __init__(self, sig: Signature, suffix: str = ''):
+    def __init__(self, sig: Signature, helpers: typing.Callable[[dict, dict], dict] | None,
+                 suffix: str = ''):
         self.locals = {}
         self.path_constraint = []
         self.tag = suffix
         self.sig = sig
         self.locals = {name: Const(name + suffix, ty) for (name, ty) in sig.decls.items()}
         self.middleware = sig.middleware
+        self.helpers = helpers
 
     def assign(self, values: dict) -> 'State':
         """simultaneous assignment"""
@@ -66,7 +68,7 @@ class State:
                         assert is_pointer_type(computed_value.sort()) and isinstance(computed_value, DatatypeRef)
                         # latter is for type checker, actually implied by the first one
 
-                        if computed_value == get_or_create_pointer_by_name(NoneTypeName):
+                        if computed_value.sort() == get_or_create_pointer_by_name(NoneTypeName):
                             upcast_value = target_value.sort().constructor(0)(0)
                         else:
                             source_pointed_sort = get_pointed_type(computed_value.sort())
@@ -109,42 +111,11 @@ class State:
                 ctx = {'_': self}
                 for mw in self.middleware:
                     ctx.update(mw)
+                if self.helpers is not None:
+                    ctx.update(self.helpers(self.locals, ctx))
                 ctx.update(self.locals)
                 ctx.update({str(ty): ty for k, ty in OPTIONAL_TYPES.items()})
                 ctx.update({str(ty): ty for k, ty in POINTER_TYPES.items()})
-
-                # todo: move these elsewhere
-                def deref(ptr: DatatypeRef) -> ExprRef:
-                    ptr_sort = ptr.sort()
-                    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
-                    pointed_sort = ctx[pointed_sort_name]
-                    return self.locals[get_heap_name(pointed_sort)][ptr_sort.accessor(0, 0)(ptr)]
-
-                def ref(loc: ExprRef, cls_name: str) -> DatatypeRef:
-                    ptr_sort = get_or_create_pointer_by_name(cls_name)
-                    return ptr_sort.constructor(0)(loc)
-
-                def ptr_loc(ptr: DatatypeRef) -> ExprRef:
-                    ptr_sort = ptr.sort()
-                    return ptr_sort.accessor(0, 0)(ptr)
-
-                def is_valid(ptr: DatatypeRef) -> ExprRef:
-                    if not isinstance(ptr, DatatypeRef):
-                        return BoolVal(True)
-                    ptr_sort = ptr.sort()
-                    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
-                    pointed_sort = ctx[pointed_sort_name]
-                    loc = ptr_loc(ptr)
-                    return And(0 <= loc, loc < self.locals[get_heap_pointer_name(pointed_sort)])
-
-                def is_valid_not_none(ptr: DatatypeRef) -> ExprRef:
-                    return And(is_valid(ptr), ptr_loc(ptr) != 0)
-
-                ctx['deref'] = deref
-                ctx['ref'] = ref
-                ctx['id'] = ptr_loc
-                ctx['is_valid'] = is_valid
-                ctx['is_valid_not_none'] = is_valid_not_none
 
                 expr = eval(expr, globals(), ctx)
             except Exception as exp:
@@ -152,7 +123,7 @@ class State:
         return expr
 
     def clone(self) -> 'State':
-        c = type(self)(self.sig)
+        c = type(self)(self.sig, self.helpers, self.tag)
         c.locals = self.locals.copy()
         c.path_constraint = self.path_constraint.copy()
         c.middleware = self.middleware

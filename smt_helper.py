@@ -1,8 +1,9 @@
+import functools
 from typing import Any, Union, Dict, Optional
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
-                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef)
+                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And)
 
 
 IntType = z3.IntSort()
@@ -118,3 +119,45 @@ def get_pointed_type(ptr: DatatypeSortRef, fallback: Optional[Dict] = None) -> S
     if fallback is not None:
         return fallback[ptr]
     raise ValueError(f"Could not find pointed type for {ptr}!")
+
+
+# Helper SMT functions - functions that should be accessible from the generated
+# code but are not implementable in the code itself, usually because they need
+# sort information
+
+def dereference_pointer(locals, ctx, ptr: DatatypeRef) -> ExprRef:
+    ptr_sort = ptr.sort()
+    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
+    pointed_sort = ctx[pointed_sort_name]
+    return locals[get_heap_name(pointed_sort)][ptr_sort.accessor(0, 0)(ptr)]
+
+
+def get_pointer_from_loc(locals, ctx, loc: ExprRef, cls_name: str) -> DatatypeRef:
+    ptr_sort = get_or_create_pointer_by_name(cls_name)
+    return ptr_sort.constructor(0)(loc)
+
+
+def get_loc_from_pointer(locals, ctx, ptr: DatatypeRef) -> ExprRef:
+    ptr_sort = ptr.sort()
+    return ptr_sort.accessor(0, 0)(ptr)
+
+
+def is_pointer_memory_valid(locals, ctx, ptr: DatatypeRef) -> ExprRef:
+    if not isinstance(ptr, DatatypeRef):
+        return BoolVal(True)
+    ptr_sort = ptr.sort()
+    pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
+    pointed_sort = ctx[pointed_sort_name]
+    loc = get_loc_from_pointer(locals, ctx, ptr)
+    return And(0 <= loc, loc < locals[get_heap_pointer_name(pointed_sort)])
+
+
+def is_valid_not_none(locals, ctx, ptr: DatatypeRef) -> ExprRef:
+    return And(is_pointer_memory_valid(locals, ctx, ptr), get_loc_from_pointer(locals, ctx, ptr) != 0)
+
+
+HELPER_SMT_FUNCTIONS = lambda locals, ctx: {k: functools.partial(v, locals, ctx)
+                                            for k, v in {"deref": dereference_pointer, "ref": get_pointer_from_loc,
+                                                         "id": get_loc_from_pointer,
+                                                         "is_valid": is_pointer_memory_valid,
+                                                         "is_valid_not_none": is_valid_not_none}.items()}

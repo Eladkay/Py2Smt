@@ -136,14 +136,15 @@ class CompareCodeGenerator(AbstractCodeGenerator):
             elif isinstance(op, ast.In):
                 if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
                     components.append((start_left, end_right, f"IsMember({var_left}, {var_right})"))
-                if isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
+                elif isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
                     value_type = right_type.range()
                     components.append((start_left, end_right, f"Select({var_right}, {var_left}) != {value_type}.none"))
-                if isinstance(self.graph.get_type(var_right), ArraySortRef):
+                elif isinstance(self.graph.get_type(var_right), ArraySortRef):
                     new_var = self.graph.fresh_var(smt_helper.BoolType)
                     components.append((start_left, end_right,
                                        f"Exists({new_var}, {var_right}[{new_var}] == {var_left})"))
-                self.type_error(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
+                else:
+                    self.type_error(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
             elif isinstance(op, ast.IsNot):
                 start, var, label = self._process_expect_data(ast.Compare(left=prev,
                                                                           ops=[ast.Is()], comparators=[comparator]))

@@ -11,7 +11,7 @@ from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSo
 from generators.generators import CodeGenerationDispatcher
 from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
     is_pointer_type, get_or_create_pointer_by_name, \
-    get_pointed_type, NoneTypeName
+    get_pointed_type, NoneTypeName, HELPER_SMT_FUNCTIONS
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -62,7 +62,7 @@ class MethodObject:
         return self._cfg
 
     def make_state(self, tag=""):
-        return State(self.sig, tag)
+        return State(self.sig, HELPER_SMT_FUNCTIONS, tag)
 
     @staticmethod
     def create_empty_constructor(system: 'Py2Smt', ty: Type,
