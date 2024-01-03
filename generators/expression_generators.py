@@ -18,13 +18,23 @@ from smt_helper import *
 class ConstantCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedDataNode:
-        new_node = self.graph.add_node("pass")
-        new_label = self.graph.fresh_label()
-        self.graph.add_edge(new_node, new_label)
+
         if isinstance(node.value, str):
             val = f"\\\"{node.value}\\\"" if isinstance(node.value, str) else node.value
+            new_node = self.graph.add_node("pass")
+            new_label = self.graph.fresh_label()
+            self.graph.add_edge(new_node, new_label)
+        elif node.value is None:
+            val = self.graph.fresh_var(get_or_create_pointer_by_name(NoneTypeName))
+            new_node = self.graph.add_node(f"{val} = None")
+            new_label = self.graph.fresh_label()
+            self.graph.add_edge(new_node, new_label, f"s.assign("
+                                + "{" + f"'{val}': '{f"{get_or_create_pointer_by_name(NoneTypeName)}.ptr(0)"}'" + "})")
         else:
             val = node.value
+            new_node = self.graph.add_node("pass")
+            new_label = self.graph.fresh_label()
+            self.graph.add_edge(new_node, new_label)
         return DecoratedDataNode("const", node, new_node, new_label, val, self.graph.get_type(val))
 
 
@@ -113,33 +123,43 @@ class CompareCodeGenerator(AbstractCodeGenerator):
         prev = node.left
         components = []
         for comparator, op in zip(node.comparators, node.ops):
+            left = self._process_expect_data(prev)
+            right = self._process_expect_data(comparator)
+            start_left, var_left, end_left = left.start_node, left.place, left.end_label
+            start_right, var_right, end_right = right.start_node, right.place, right.end_label
+            self.graph.bp(end_left, start_right)
+            right_type = self.graph.get_type(var_right)
             if isinstance(op, ast.NotIn):
                 start, var, label = self._process_expect_data(ast.Compare(left=prev,
                                                                           ops=[ast.In()], comparators=[comparator]))
                 components.append((start, label, f"Not({var})"))
             elif isinstance(op, ast.In):
-                left = self._process_expect_data(prev)
-                right = self._process_expect_data(comparator)
-                start_left, var_left, end_left = left.start_node, left.place, left.end_label
-                start_right, var_right, end_right = right.start_node, right.place, right.end_label
-                self.graph.bp(end_left, start_right)
-                right_type = self.graph.get_type(var_right)
                 if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
                     components.append((start_left, end_right, f"IsMember({var_left}, {var_right})"))
-                    continue
                 if isinstance(right_type, ArraySortRef) and right_type.range().name().endswith("Option"):
                     value_type = right_type.range()
                     components.append((start_left, end_right, f"Select({var_right}, {var_left}) != {value_type}.none"))
-                    continue
                 if isinstance(self.graph.get_type(var_right), ArraySortRef):
                     new_var = self.graph.fresh_var(smt_helper.BoolType)
                     components.append((start_left, end_right,
                                        f"Exists({new_var}, {var_right}[{new_var}] == {var_left})"))
-                    continue
-                raise NotImplementedError(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
+                self.type_error(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
+            elif isinstance(op, ast.IsNot):
+                start, var, label = self._process_expect_data(ast.Compare(left=prev,
+                                                                          ops=[ast.Is()], comparators=[comparator]))
+                components.append((start, label, f"Not({var})"))
+            elif isinstance(op, ast.Is):
+                if not is_pointer_type(right_type):
+                    self.type_error("Cannot check identicality of non-pointer types!")
 
-            processed = self._process_expect_data(ast.BinOp(left=prev, op=op, right=comparator))
-            components.append((processed.start_node, processed.end_label, processed.place))
+                if right_type != get_or_create_pointer_by_name(NoneTypeName) and \
+                        right_type != self.graph.get_type(var_left):
+                    components.append((start_left, end_right, f"False"))
+                else:
+                    components.append((start_left, end_right, f"id({var_left}) == id({var_right})"))
+            else:
+                processed = self._process_expect_data(ast.BinOp(left=prev, op=op, right=comparator))
+                components.append((processed.start_node, processed.end_label, processed.place))
             prev = comparator
         starts, ends, exprs = zip(*components)
         self.graph.bp_list([(start, end) for start, end in zip(starts, ends)])

@@ -8,6 +8,7 @@ from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
 IntType = z3.IntSort()
 StringType = z3.StringSort()
 BoolType = z3.BoolSort()
+NoneTypeName = "NoneType"  # todo: compute the type itself only once
 
 
 def upcast_pointer(ptr1: DatatypeRef, target_pointer_sort: DatatypeSortRef, source_heap: ArrayRef) -> ExprRef:

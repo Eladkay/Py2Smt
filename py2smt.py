@@ -9,8 +9,9 @@ from typing import List, Union, Type, Callable, Any, Dict
 from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSort)
 
 from generators.generators import CodeGenerationDispatcher
-from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, is_pointer_type, get_or_create_pointer_by_name, \
-    get_pointed_type
+from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
+    is_pointer_type, get_or_create_pointer_by_name, \
+    get_pointed_type, NoneTypeName
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -190,11 +191,14 @@ class Py2Smt:
         base_types = {"int": IntType, "bool": BoolType, "str": StringType}
         if typename in base_types:
             return base_types[typename]
+        none_type = get_or_create_pointer_by_name(NoneTypeName)
+        if typename == none_type.name():
+            return none_type
         if typename in [cls.__name__ for cls in self.classes]:
             return get_or_create_pointer_by_name(typename)
         if typename in self.generic_vars:  # todo: generic vars are global
-            return z3.DeclareSort(typename)  # cache this?
-        raise ValueError("Unknown type")
+            return z3.DeclareSort(typename)  # todo cache this?
+        raise ValueError(f"Unknown type {typename}")
 
     def get_type_from_annotation(self, annotation: expr) -> Any:
         if annotation is None:

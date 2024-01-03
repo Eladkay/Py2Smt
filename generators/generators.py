@@ -109,7 +109,13 @@ class CodeGenerationDispatcher:
         if self.graph.name != "is_valid":
             args = tree.body[0].args.args if hasattr(tree.body[0].args, "args") else []  # todo old_args?
             for arg in args:
-                new_tree.body[0].body.insert(0, ast.parse(f"__assume__(__literal__('is_valid({arg.arg})'))").body[0])
+                if arg.arg != "self":
+                    new_tree.body[0].body.insert(0,
+                                                 ast.parse(f"__assume__(__literal__('is_valid({arg.arg})'))").body[0])
+                else:
+                    new_tree.body[0].body.insert(0,
+                                                 ast.parse(f"__assume__(__literal__('is_valid_not_none({arg.arg})'))")
+                                                 .body[0])
 
         self.process(new_tree)
         if self.graph.break_label is not None or self.graph.continue_label is not None:

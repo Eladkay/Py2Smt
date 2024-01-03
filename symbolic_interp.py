@@ -7,7 +7,8 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # noinspection PyUnresolvedReferences
 # pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
-    get_or_create_pointer_by_name, get_heap_pointer_name, is_pointer_type, get_pointed_type, upcast_pointer
+    get_or_create_pointer_by_name, get_heap_pointer_name, is_pointer_type, get_pointed_type, upcast_pointer, \
+    NoneTypeName
 
 
 class Signature:
@@ -64,19 +65,23 @@ class State:
                     if is_pointer_type(target_value.sort()):
                         assert is_pointer_type(computed_value.sort()) and isinstance(computed_value, DatatypeRef)
                         # latter is for type checker, actually implied by the first one
-                        source_pointed_sort = get_pointed_type(computed_value.sort())
-                        target_pointed_sort = get_pointed_type(target_value.sort())
-                        upcast_value = upcast_pointer(computed_value, target_value.sort(),
-                                                      self.locals[get_heap_name(source_pointed_sort)])
-                        assert get_heap_name(target_pointed_sort) not in new_values
-                        assert get_heap_pointer_name(target_pointed_sort) not in new_values
-                        target_heap = self.locals[get_heap_name(target_pointed_sort)]
-                        target_hp = self.locals[get_heap_pointer_name(target_pointed_sort)]
-                        new_values[get_heap_name(target_pointed_sort)] = \
-                            Store(target_heap, target_hp, upcast_value)
-                        new_values[get_heap_pointer_name(target_pointed_sort)] = \
-                            target_hp + 1
-                        upcast_value = target_value.sort().constructor(0)(target_hp)
+
+                        if computed_value == get_or_create_pointer_by_name(NoneTypeName):
+                            upcast_value = target_value.sort().constructor(0)(0)
+                        else:
+                            source_pointed_sort = get_pointed_type(computed_value.sort())
+                            target_pointed_sort = get_pointed_type(target_value.sort())
+                            upcast_value = upcast_pointer(computed_value, target_value.sort(),
+                                                          self.locals[get_heap_name(source_pointed_sort)])
+                            assert get_heap_name(target_pointed_sort) not in new_values
+                            assert get_heap_pointer_name(target_pointed_sort) not in new_values
+                            target_heap = self.locals[get_heap_name(target_pointed_sort)]
+                            target_hp = self.locals[get_heap_pointer_name(target_pointed_sort)]
+                            new_values[get_heap_name(target_pointed_sort)] = \
+                                Store(target_heap, target_hp, upcast_value)
+                            new_values[get_heap_pointer_name(target_pointed_sort)] = \
+                                target_hp + 1
+                            upcast_value = target_value.sort().constructor(0)(target_hp)
                     else:
                         upcast_value = upcast_expr(computed_value, target_value.sort())
                     computed_value = upcast_value
@@ -108,6 +113,7 @@ class State:
                 ctx.update({str(ty): ty for k, ty in OPTIONAL_TYPES.items()})
                 ctx.update({str(ty): ty for k, ty in POINTER_TYPES.items()})
 
+                # todo: move these elsewhere
                 def deref(ptr: DatatypeRef) -> ExprRef:
                     ptr_sort = ptr.sort()
                     pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
@@ -118,18 +124,27 @@ class State:
                     ptr_sort = get_or_create_pointer_by_name(cls_name)
                     return ptr_sort.constructor(0)(loc)
 
+                def ptr_loc(ptr: DatatypeRef) -> ExprRef:
+                    ptr_sort = ptr.sort()
+                    return ptr_sort.accessor(0, 0)(ptr)
+
                 def is_valid(ptr: DatatypeRef) -> ExprRef:
                     if not isinstance(ptr, DatatypeRef):
                         return BoolVal(True)
                     ptr_sort = ptr.sort()
                     pointed_sort_name = [k for k, v in POINTER_TYPES.items() if v == ptr_sort][0]
                     pointed_sort = ctx[pointed_sort_name]
-                    loc = ptr_sort.accessor(0, 0)(ptr)
+                    loc = ptr_loc(ptr)
                     return And(0 <= loc, loc < self.locals[get_heap_pointer_name(pointed_sort)])
+
+                def is_valid_not_none(ptr: DatatypeRef) -> ExprRef:
+                    return And(is_valid(ptr), ptr_loc(ptr) != 0)
 
                 ctx['deref'] = deref
                 ctx['ref'] = ref
+                ctx['id'] = ptr_loc
                 ctx['is_valid'] = is_valid
+                ctx['is_valid_not_none'] = is_valid_not_none
 
                 expr = eval(expr, globals(), ctx)
             except Exception as exp:

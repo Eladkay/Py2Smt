@@ -64,3 +64,7 @@ def __literal__(s):
 
 def is_valid(s):
     pass
+
+
+def id(s):
+    pass

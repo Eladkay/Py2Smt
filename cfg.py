@@ -7,7 +7,8 @@ import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
                 ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort)
 
-from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name
+from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
+    get_or_create_pointer_by_name, NoneTypeName
 from symbolic_interp import State, Signature
 
 
@@ -111,6 +112,8 @@ class ControlFlowGraph:
         if ((value.startswith('"') or value.startswith("\\\"")) and
                 (value.endswith('"') or value.endswith("\\\""))):
             return StringSort()
+        if value == "None":
+            return get_or_create_pointer_by_name(NoneTypeName)
         try:
             return eval(value).sort()
         except Exception:

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Set
 
 from z3 import Or, z3, And
 
@@ -76,7 +76,28 @@ class GenericList[T]:
         return self.cache_value
 
 
-class Py2SmtClassTests(SmtTestCase):
+# Constrictor DS benchmarks - START
+class ImmutableSet[T]:
+    delegate: Set[T]
+    hash_code: int
+
+    def __init__(self, delegate: Set[T]):
+        self.delegate = delegate
+        self.hash_code = 0
+
+    def contains(self, value: T) -> bool:
+        return value in self.delegate
+
+    def __hash__(self) -> int:
+        if self.hash_code == 0:
+            self.hash_code = hash(self.delegate)
+        return self.hash_code
+
+
+# Constrictor DS benchmarks - FIN
+
+
+class Py2SmtDataStructureTests(SmtTestCase):
     def test_generic_list_set(self):
         smt = Py2Smt([GenericList])
         entry = smt.get_entry_by_name("set")

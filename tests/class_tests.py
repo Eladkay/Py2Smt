@@ -1,6 +1,8 @@
 import unittest
 from typing import List
 
+from z3 import Not
+
 from py2smt import Py2Smt
 from stdlib import __assume__
 from tests.smt_test_case import SmtTestCase
@@ -44,6 +46,18 @@ class RectangleTestClass:
         ret = self.width
         self.width = 0
         return ret
+
+
+class B:
+
+    def self_none(self, param: A) -> bool:
+        return self is None
+
+    def param_none(self, param: A) -> bool:
+        return param is None
+
+    def self_param(self, param: A) -> bool:
+        return self is param
 
 
 class Py2SmtClassTests(SmtTestCase):
@@ -125,6 +139,30 @@ class Py2SmtClassTests(SmtTestCase):
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var)
                            == state0.eval("RectangleTestClass.width(deref(self))"))
+
+    def test_is(self):
+        smt = Py2Smt([A, B])
+        entries = smt.get_entry_by_name("self_none"), smt.get_entry_by_name("param_none"), \
+            smt.get_entry_by_name("self_param")
+        self.assertTupleEqual(tuple([entry.args for entry in entries]), (["self", "param"], ) * 3)
+
+        self_none = entries[0]
+        state0, state1 = self_none.make_state(), self_none.make_state("'")
+        tr = self_none.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, Not(state1.eval(self_none.cfg.return_var)))
+
+        param_none = entries[1]
+        state0, state1 = param_none.make_state(), param_none.make_state("'")
+        tr = param_none.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(param_none.cfg.return_var) == state0.eval(f"id(param) == 0"))
+
+        self_param = entries[2]
+        state0, state1 = self_param.make_state(), self_param.make_state("'")
+        tr = self_param.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, Not(state1.eval(self_param.cfg.return_var)))
 
 
 if __name__ == '__main__':
