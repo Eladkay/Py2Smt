@@ -317,6 +317,20 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             self.graph.bp(ends[0], new_node)
             return DecoratedControlNode("assume", node, starts[0], new_label)
 
+        if called_function.name == "hash":
+            if len(exprs) != 1:
+                self.type_error("The hash function should have exactly one argument")
+            expr = exprs[0]
+            ty = self.graph.get_type(exprs[0])
+            new_var = self.graph.fresh_var(IntType)
+            new_node = self.graph.add_node(f"{new_var} = hash({expr})")
+            new_label = self.graph.fresh_label()
+            type_string = self.graph.type_to_place_string(ty)
+            function = f'Function(f"hash_{type_string}", {type_string}, IntSort())'
+            self.graph.add_edge(new_node, new_label, f"s.assign({{ '{new_var}': '{function}({expr})' }})")
+            self.graph.bp(ends[0], new_node)
+            return DecoratedDataNode("hash", node, starts[0], new_label, new_var, IntType)
+
         tree = ast.Module(body=called_function.ast.body, type_ignores=called_function.ast.type_ignores)
         if called_function.name == "__init__":
             # Allocate memory

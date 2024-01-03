@@ -148,7 +148,7 @@ class ControlFlowGraph:
         if isinstance(ty, SeqSortRef):
             return f"SeqSort({ControlFlowGraph.type_to_place_string(ty.basis())})"
         if isinstance(ty, SortRef):  # assume it is a generic variable, todo?
-            return f"DefineSort({ty.name()})"
+            return ty.name()
         raise NotImplementedError(f"Cannot get place string for type {ty}")
 
     def report_type(self, var: str, ty: Any):

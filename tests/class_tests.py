@@ -59,6 +59,17 @@ class B:
     def self_param(self, param: A) -> bool:
         return self is param
 
+    def hash_everything(self, hash_your_woman: int,
+                        hash_your_man: str,
+                        it_is_all_part_of_gods_plan: bool,
+                        we_should_hash_all_that_we_can: A,
+                        here_in_py2smt_land: List[int]):
+        x: int = hash(hash_your_woman)
+        x = hash(hash_your_man)
+        x = hash(it_is_all_part_of_gods_plan)
+        x = hash(we_should_hash_all_that_we_can)
+        x = hash(here_in_py2smt_land)
+
 
 class Py2SmtClassTests(SmtTestCase):
     def test_basic_fields(self):
@@ -163,6 +174,13 @@ class Py2SmtClassTests(SmtTestCase):
         tr = self_param.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
         self.assertImplies(tr, Not(state1.eval(self_param.cfg.return_var)))
+
+    def test_hash(self):
+        smt = Py2Smt([A, B])
+        entry = smt.get_entry_by_name("hash_everything")
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
 
 
 if __name__ == '__main__':

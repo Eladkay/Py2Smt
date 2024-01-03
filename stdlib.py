@@ -23,6 +23,11 @@ def Not(x: bool) -> bool:
 
 
 # noinspection PyShadowingBuiltins
+def hash(x: int) -> int:
+    return x
+
+
+# noinspection PyShadowingBuiltins
 def len(s: str) -> int:
     # noinspection PyTypeChecker
     return Length(s)
