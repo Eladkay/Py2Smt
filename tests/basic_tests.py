@@ -225,6 +225,9 @@ class BasicTest:
             sum += i
         return sum
 
+    def bitwise_ops(self, x: int, y: int) -> int:
+        return (x | y) ^ (x & y)
+
 
 class Py2SmtBasicTests(SmtTestCase):
 
@@ -457,6 +460,17 @@ class Py2SmtBasicTests(SmtTestCase):
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == 6)
+
+    def test_bitwise_ops(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("bitwise_ops")
+        self.assertEqual(entry.args, ["self", "x", "y"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        x = Int2BV(state0.eval("x"), 64)
+        y = Int2BV(state0.eval("y"), 64)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) == BV2Int((x | y) ^ (x & y)))
 
 
 if __name__ == '__main__':

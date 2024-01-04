@@ -44,7 +44,8 @@ class ArgCodeGenerator(AbstractCodeGenerator):
 ops = {ast.Add: '+', ast.Sub: '-', ast.Mult: '*', ast.Div: '/', ast.FloorDiv: "/", ast.Mod: '%',
        ast.Pow: '**', ast.LShift: '<<', ast.RShift: '>>', ast.Eq: "==",
        ast.NotEq: "!=", ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=",
-       ast.Is: "is", ast.IsNot: "is not", ast.In: "in", ast.NotIn: "not in"}
+       ast.Is: "is", ast.IsNot: "is not", ast.In: "in", ast.NotIn: "not in",
+       ast.BitOr: "|", ast.BitXor: "^", ast.BitAnd: "&"}
 unaryops = {ast.Not: "not", ast.UAdd: "+", ast.USub: "-"}
 boolops = [ast.And, ast.Or]
 

@@ -205,7 +205,7 @@ class LRUMap[K, V]:
         self.data[hash_index] = entry
 
     def hash_index(self, hash_code: int, length: int) -> int:
-        return hash_code & (length - 1)   # TODO
+        return hash_code & (length - 1)
 
     def is_full(self) -> bool:
         return self.size >= self.max_size
