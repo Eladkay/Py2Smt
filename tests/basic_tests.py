@@ -228,6 +228,9 @@ class BasicTest:
     def bitwise_ops(self, x: int, y: int) -> int:
         return (x | y) ^ (x & y)
 
+    def floats(self, x: float, y: float, z: float) -> float:
+        return x + y - 0.5*z
+
 
 class Py2SmtBasicTests(SmtTestCase):
 
@@ -471,6 +474,16 @@ class Py2SmtBasicTests(SmtTestCase):
         x = Int2BV(state0.eval("x"), 64)
         y = Int2BV(state0.eval("y"), 64)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) == BV2Int((x | y) ^ (x & y)))
+
+    def test_floats(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("floats")
+        self.assertEqual(entry.args, ["self", "x", "y", "z"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) ==
+                           state0.eval("x") + state0.eval("y") - 0.5*state0.eval("z"))
 
 
 if __name__ == '__main__':

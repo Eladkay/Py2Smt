@@ -8,7 +8,7 @@ from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
                 ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort)
 
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
-    get_or_create_pointer_by_name, NoneTypeName
+    get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType
 from symbolic_interp import State, Signature
 
 
@@ -104,14 +104,19 @@ class ControlFlowGraph:
             return None
         try:
             int(value)
-            return IntSort()
+            return IntType
+        except ValueError:
+            pass
+        try:
+            float(value)
+            return FloatType
         except ValueError:
             pass
         if value in ["True", "False"]:
-            return BoolSort()
+            return BoolSort
         if ((value.startswith('"') or value.startswith("\\\"")) and
                 (value.endswith('"') or value.endswith("\\\""))):
-            return StringSort()
+            return StringType
         if value == "None":
             return get_or_create_pointer_by_name(NoneTypeName)
         try:
@@ -140,7 +145,7 @@ class ControlFlowGraph:
             return f"ArraySort({ControlFlowGraph.type_to_place_string(ty.domain())}, " \
                    f"{ControlFlowGraph.type_to_place_string(ty.range())})"
         if isinstance(ty, ArithSortRef):
-            return "IntSort()"
+            return "IntSort()" if ty.is_int() else "RealSort()"
         if isinstance(ty, BoolSortRef):
             return "BoolSort()"
         if isinstance(ty, SeqSortRef) and ty.is_string():

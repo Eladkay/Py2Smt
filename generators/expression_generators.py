@@ -49,7 +49,7 @@ class NameCodeGenerator(AbstractCodeGenerator):
                                  self.graph.get_type(node.id) if self.graph.has_type(node.id) else None)
 
 
-op_return_types = {ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: IntType,
+op_return_types = {ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: FloatType,
                    ast.FloorDiv: IntType, ast.Mod: IntType, ast.Eq: BoolType, ast.NotEq: BoolType,
                    ast.Lt: BoolType, ast.LtE: BoolType, ast.Gt: BoolType, ast.GtE: BoolType,
                    ast.Is: BoolType, ast.IsNot: BoolType, ast.In: BoolType, ast.NotIn: BoolType,
@@ -75,14 +75,21 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         self.graph.bp(end1, start2)
         self.graph.bp(end2, new_node)
         new_label = self.graph.fresh_label()
-        if type(node.op) not in bitwise_ops:
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
-        else:
+        if type(node.op) in bitwise_ops:
             expr1 = f"Int2BV({expr1}, 64)"
             expr2 = f"Int2BV({expr2}, 64)"
             self.graph.add_edge(new_node, new_label,
                                 "s.assign({" + f"'{new_var}': 'BV2Int({expr1} {op_string} {expr2})'" + "})")
+        elif type(node.op) == ast.Div:
+            if isinstance(expr1, int):
+                expr1 = f"IntVal({expr1})"
+            if isinstance(expr2, int):
+                expr2 = f"IntVal({expr2})"
+            self.graph.add_edge(new_node, new_label,
+                                "s.assign({" + f"'{new_var}': 'ToReal({expr1}) / ToReal({expr2})'" + "})")
+        else:
+            self.graph.add_edge(new_node, new_label,
+                                "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
         return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.get_type(new_var))
 
 

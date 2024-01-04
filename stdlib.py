@@ -68,3 +68,6 @@ def is_valid(s):
 
 def id(s):
     pass
+
+def int(num: float) -> int:
+    pass

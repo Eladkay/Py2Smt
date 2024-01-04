@@ -133,7 +133,7 @@ class LRUMap[K, V]:
     max_size: int
     mod_count: int
     size: int
-    load_factor: float  # TODO
+    load_factor: float
     threshold: int
     header: LinkEntry
     data: List[LinkEntry]
@@ -142,8 +142,8 @@ class LRUMap[K, V]:
         self.max_size = 16
         self.mod_count = 0
         self.size = 0
-        self.load_factor = 0.75  # TODO
-        self.threshold = int(self.max_size * self.load_factor)  # TODO
+        self.load_factor = 0.75
+        self.threshold = int(self.max_size * self.load_factor)
         self.header = LinkEntry(None, -1, None, None)
         self.header.before = self.header
         self.header.after = self.header

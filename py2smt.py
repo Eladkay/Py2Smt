@@ -11,7 +11,7 @@ from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSo
 from generators.generators import CodeGenerationDispatcher
 from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
     is_pointer_type, get_or_create_pointer_by_name, \
-    get_pointed_type, NoneTypeName, HELPER_SMT_FUNCTIONS
+    get_pointed_type, NoneTypeName, HELPER_SMT_FUNCTIONS, FloatType
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -188,7 +188,7 @@ class Py2Smt:
             self.class_types[cls] = datatype.create()
 
     def _get_type_from_string(self, typename: str) -> SortRef:
-        base_types = {"int": IntType, "bool": BoolType, "str": StringType}
+        base_types = {"int": IntType, "bool": BoolType, "str": StringType, "float": FloatType}
         if typename in base_types:
             return base_types[typename]
         none_type = get_or_create_pointer_by_name(NoneTypeName)

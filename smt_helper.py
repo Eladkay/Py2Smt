@@ -3,12 +3,13 @@ from typing import Any, Union, Dict, Optional
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
-                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And)
+                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And, ToInt)
 
 
 IntType = z3.IntSort()
 StringType = z3.StringSort()
 BoolType = z3.BoolSort()
+FloatType = z3.RealSort()
 NoneTypeName = "NoneType"  # todo: compute the type itself only once
 
 
@@ -156,8 +157,14 @@ def is_valid_not_none(locals, ctx, ptr: DatatypeRef) -> ExprRef:
     return And(is_pointer_memory_valid(locals, ctx, ptr), get_loc_from_pointer(locals, ctx, ptr) != 0)
 
 
+def cast_to_int(locals, ctx, flt: ArithSortRef) -> ExprRef:
+    return ToInt(flt)
+
+
+
 HELPER_SMT_FUNCTIONS = lambda locals, ctx: {k: functools.partial(v, locals, ctx)
                                             for k, v in {"deref": dereference_pointer, "ref": get_pointer_from_loc,
                                                          "id": get_loc_from_pointer,
                                                          "is_valid": is_pointer_memory_valid,
-                                                         "is_valid_not_none": is_valid_not_none}.items()}
+                                                         "is_valid_not_none": is_valid_not_none,
+                                                         "int": cast_to_int}.items()}
