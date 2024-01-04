@@ -94,6 +94,182 @@ class ImmutableSet[T]:
         return self.hash_code
 
 
+class HashEntry[K, V]:
+    next: 'HashEntry[K, V]'
+    hash_code: int
+    key: K
+    value: V
+
+    def __init__(self, next: Optional['HashEntry[K, V]'], hash_code: int, key: K, value: V):
+        self.next = next
+        self.hash_code = hash_code
+        self.key = key
+        self.value = value
+
+    def get_key(self) -> K:
+        return self.key
+
+    def get_value(self) -> V:
+        return self.value
+
+    def set_value(self, value: V):
+        self.value = value
+
+
+class LinkEntry[K, V](HashEntry):
+    before: 'LinkEntry[K, V]'
+    after: 'LinkEntry[K, V]'
+
+    def __init__(self, next: 'HashEntry[K, V]', hash_code: int, key: K, value: V):
+        self.next = next
+        self.hash_code = hash_code
+        self.key = key
+        self.value = value
+        self.before = None
+        self.after = None
+
+
+class LRUMap[K, V]:
+    max_size: int
+    mod_count: int
+    size: int
+    load_factor: float  # TODO
+    threshold: int
+    header: LinkEntry
+    data: List[LinkEntry]
+
+    def __init__(self):
+        self.max_size = 16
+        self.mod_count = 0
+        self.size = 0
+        self.load_factor = 0.75  # TODO
+        self.threshold = int(self.max_size * self.load_factor)  # TODO
+        self.header = LinkEntry(None, -1, None, None)
+        self.header.before = self.header
+        self.header.after = self.header
+        self.data = [None] * self.max_size  # TODO
+
+    def get(self, key: K) -> V:
+        entry = self._get_entry(key)
+        if entry is None:
+            return None
+        self._move_to_mru(entry)
+        return entry.get_value()
+
+    def _move_to_mru(self, entry: LinkEntry):
+        if entry.after != self.header:
+            self.mod_count += 1
+            assert entry.before is not None
+            entry.before.after = entry.after
+            entry.after.before = entry.before
+            entry.after = self.header
+            entry.before = self.header.before
+            self.header.before.after = entry
+            self.header.before = entry
+        else:
+            assert entry != self.header
+
+    def put(self, key: K, value: V) -> V:
+        hash_code = hash(key)
+        index = self.hash_index(hash_code, len(self.data))
+        entry = self.data[index]
+        while entry is not None:
+            if entry.hash_code == hash_code and entry.key == key:
+                old_value = entry.get_value()
+                entry.set_value(value)
+                return old_value
+            entry = entry.next
+        self.add_mapping(index, hash_code, key, value)
+        return None
+
+    def add_mapping(self, index: int, hash_code: int, key: K, value: V):
+        if self.is_full():
+            reuse = self.header.after
+            assert reuse is not None
+            self.reuse_mapping(reuse, index, hash_code, key, value)
+        else:
+            self._add_mapping(index, hash_code, key, value)
+
+    def reuse_mapping(self, entry: LinkEntry, hash_index: int, hash_code: int, key: K, value: V):
+        remove_index = self.hash_index(entry.hash_code, len(self.data))
+        tmp: List[HashEntry] = self.data
+        loop = tmp[remove_index]
+        previous = None
+        while loop != entry and loop is not None:
+            previous = loop
+            loop = loop.next
+        assert loop is not None
+        self.mod_count += 1
+        self.remove_entry(entry, remove_index, previous)
+        self.reuse_entry(entry, hash_index, hash_code, key, value)
+        self.data[hash_index] = entry
+
+    def hash_index(self, hash_code: int, length: int) -> int:
+        return hash_code & (length - 1)   # TODO
+
+    def is_full(self) -> bool:
+        return self.size >= self.max_size
+
+    def _add_mapping(self, index: int, hash_code: int, key: K, value: V):
+        self.mod_count += 1
+        entry = self.create_entry(self.data[index], hash_code, key, value)
+        self.data[index] = entry
+        self.size += 1
+        self.check_capacity()
+
+    def remove_entry(self, entry: HashEntry, index: int, previous: HashEntry):
+        if previous is None:
+            self.data[index] = entry.next
+        else:
+            previous.next = entry.next
+
+    def reuse_entry(self, entry: HashEntry, hash_index: int, hash_code: int, key: K, value: V):
+        entry.next = self.data[hash_index]
+        entry.hash_code = hash_code
+        entry.key = key
+        entry.value = value
+
+    def create_entry(self, next: HashEntry, hash_code: int, key: K, value: V) -> HashEntry:
+        return HashEntry(next, hash_code, key, value)
+
+    def _get_entry(self, key: K) -> LinkEntry:
+        hash_code = hash(key)
+        entry = self.data[self.hash_index(hash_code, len(self.data))]
+        while entry is not None:
+            if entry.hash_code == hash_code and entry.key == key:
+                return entry
+            entry = entry.next
+        return None
+
+    def check_capacity(self):
+        if self.size > self.threshold:
+            self.ensure_capacity(len(self.data) * 2)
+
+    def ensure_capacity(self, new_capacity: int):
+        old_capacity = len(self.data)
+        if new_capacity <= old_capacity:
+            return
+        if self.size == 0:
+            self.threshold = int(new_capacity * self.load_factor)
+            self.data = [None] * new_capacity
+            return
+        old_entries = self.data
+        new_entries = [None] * new_capacity
+        self.mod_count += 1
+        for i in range(0, old_capacity):
+            entry = old_entries[i]
+            if entry is not None:
+                old_entries[i] = None
+                while entry is not None:
+                    next = entry.next
+                    index = self.hash_index(entry.hash_code, new_capacity)
+                    entry.next = new_entries[index]
+                    new_entries[index] = entry
+                    entry = next
+        self.threshold = int(new_capacity * self.load_factor)
+        self.data = new_entries
+
+
 # Constrictor DS benchmarks - FIN
 
 
