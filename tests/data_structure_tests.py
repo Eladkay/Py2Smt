@@ -4,7 +4,7 @@ from z3 import Or, z3, And
 
 from py2smt import Py2Smt
 from stdlib import __assume__
-from tests.smt_test_case import SmtTestCase
+from .smt_test_case import SmtTestCase
 
 
 class Node[E]:

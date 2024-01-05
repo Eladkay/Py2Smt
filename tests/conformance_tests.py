@@ -1,5 +1,5 @@
 from py2smt import Py2Smt
-from tests.smt_test_case import SmtTestCase
+from .smt_test_case import SmtTestCase
 
 
 class A:

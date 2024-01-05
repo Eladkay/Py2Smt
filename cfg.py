@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from typing import Callable, Tuple, List, Any, Type
 
 import z3
-from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
-                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort)
+from z3 import (ExprRef, simplify, And, BoolSort, ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef,
+                SortRef, ArraySort)
 
-from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
+from .smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
     get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType
-from symbolic_interp import State, Signature
+from .symbolic_interp import State, Signature
 
 
 @dataclass

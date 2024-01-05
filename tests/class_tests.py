@@ -4,9 +4,9 @@ from typing import List
 from z3 import Not, Concat
 
 from py2smt import Py2Smt
-from smt_helper import list_of, IntType, singleton_list
+from smt_helper import list_of, IntType
 from stdlib import __assume__
-from tests.smt_test_case import SmtTestCase
+from .smt_test_case import SmtTestCase
 
 
 class A:
