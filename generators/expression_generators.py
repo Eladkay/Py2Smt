@@ -300,23 +300,29 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
     def process_node(self, node: AST) -> DecoratedAst:
         name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr
-        receiver = self._process_expect_data(node.func.value).place if isinstance(node.func, ast.Attribute) else None
+        receiver_node = self._process_expect_data(node.func.value) if isinstance(node.func, ast.Attribute) else None
+        receiver = receiver_node.place if receiver_node is not None else None
+        receiver_type: SortRef = self.graph.get_type(receiver) if receiver is not None else None
         args = [(arg.start_node, arg.place, arg.end_label)
                 for arg in [self._process_expect_data(it) for it in node.args]]
         starts, exprs, ends = zip(*args) if len(args) > 0 else ([], [], [])
         starts_and_ends = [(start, end) for start, end in zip(starts, ends)]
         self.graph.bp_list(starts_and_ends)
-        if not self.graph.system.has_method_entry(name, None if receiver is None else self.graph.get_type(receiver)) \
+
+        if not self.graph.system.has_method_entry(name, receiver_type) \
                 and name in dir(z3):
             new_node = self.graph.add_node(ControlFlowGraph.PASS)
             new_label = self.graph.fresh_label()
+            if len(args) > 0:
+                start = starts[0]
+                self.graph.bp(ends[:-1], new_node)
+            else:
+                start = new_node
             self.graph.add_edge(new_node, new_label)
-            return DecoratedDataNode("z3_call", node, new_node, new_label,
+            return DecoratedDataNode("z3_call", node, start, new_label,
                                      f"{name}({', '.join(map(str, exprs))})", None)
 
-        called_function = self.graph.system.get_entry_by_name(name,
-                                                              None if receiver is None
-                                                              else self.graph.get_type(receiver))
+        called_function = self.graph.system.get_entry_by_name(name, receiver_type)
         params = called_function.args
 
         if len(params) == len(exprs) + 1:
@@ -329,6 +335,8 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         if called_function.name == "__literal__":
             if len(exprs) != 1:
                 self.type_error("Literal expression should have exactly one argument")
+            if receiver is not None:
+                self.type_error("The literal expression should not have a receiver")
             s = exprs[0]
             if not isinstance(s, str):
                 self.type_error("Literal expression should have a constant string argument")
@@ -343,6 +351,8 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         if called_function.name == "__assume__":
             if len(exprs) != 1:
                 self.type_error("Assume expression should have exactly one argument")
+            if receiver is not None:
+                self.type_error("The assume expression should not have a receiver")
             new_node = self.graph.add_node(f"assume {exprs[0]}")
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
@@ -353,6 +363,9 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             # todo!
             if len(exprs) != 1:
                 self.type_error(f"Function {called_function.name} should have exactly one argument")
+            if receiver is None:
+                self.type_error(f"Function {called_function.name} should have a list receiver")
+                # todo: should start by computing the receiver
             expr = exprs[0]
             ty = self.graph.get_type(receiver)
             if not isinstance(ty, SeqSortRef):
@@ -370,6 +383,8 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         if called_function.name == "hash":
             if len(exprs) != 1:
                 self.type_error("The hash function should have exactly one argument")
+            if receiver is not None:
+                self.type_error("The hash function should not have a receiver")
             expr = exprs[0]
             ty = self.graph.get_type(exprs[0])
             new_var = self.graph.fresh_var(IntType)
@@ -421,8 +436,13 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         new_cfg.clean_cfg()
 
         func_start, func_end = self.graph.add_all(new_cfg)
+        start = func_start
+        if receiver is not None:
+            self.graph.bp(receiver_node.end_label, start)
+            start = receiver_node.start_node
         if len(args) > 0:
-            self.graph.bp(ends[-1], func_start)
+            self.graph.bp(ends[-1], start)
+            start = starts[0]
 
         new_types_without_self = {k: v for k, v in new_cfg.types.items() if k != "self"}
         assert not any(k in self.graph.types and self.graph.types[k] != new_types_without_self[k]
@@ -441,8 +461,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             new_node = self.graph.add_node(f"{name}({', '.join(map(str, exprs))})")
         self.graph.add_edge(new_node, new_label)
         self.graph.bp(func_end, new_node)
-        return DecoratedDataNode("regular_call", node, starts[0] if len(args) > 0 else func_start, new_label,
-                                 new_var, self.graph.get_type(new_var))
+        return DecoratedDataNode("regular_call", node, start, new_label, new_var, self.graph.get_type(new_var))
 
 
 @handles(ast.Attribute)

@@ -9,7 +9,7 @@ class A:
         self.some_field = 0
 
     def some_writing_method(self):
-        self.some_field = 1
+        self.some_field += 1
         return 2
 
     def some_reading_method(self):
@@ -22,6 +22,9 @@ class A:
     def some_overridden_reading_writing_method(self):
         self.some_field += 1
         return self.some_field
+
+    def return_self(self):
+        return self
 
 
 class B(A):
@@ -45,8 +48,8 @@ class B(A):
         return self
 
     def object_field(self):
-        self.object_field.some_writing_method()  # object_field.some_field' = 1
-        return self.object_field.some_reading_method()  # returned' = 1, object_field.some_field' = 1
+        self.object_field.some_writing_method()
+        return self.object_field.some_reading_method()
 
     def object_field2(self):
         self.object_field.some_field = 1
@@ -66,14 +69,11 @@ class B(A):
         b.some_field = 1
         return a.some_field
 
-    def return_self(self) -> A:
-        return self
+    def return_param(self, param: A) -> A:
+        return param.return_self()
 
-    def return_self2(self) -> A:
-        return self.return_self()
-
-    def return_self3(self) -> A:
-        return self.return_self2().return_self()
+    def return_param2(self, param: A) -> A:
+        return param.return_self().return_self()
 
 
 class Py2SmtConformanceTests(SmtTestCase):
@@ -86,7 +86,7 @@ class Py2SmtConformanceTests(SmtTestCase):
         returned_var = state1[writing_method.cfg.return_var]
         self.assertSat(tr)
         self.assertImplies(tr, returned_var == 2)
-        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == 1)
+        self.assertImplies(tr, state1.eval("A.some_field(deref(self))") == 1 + state0.eval("A.some_field(deref(self))"))
 
         reading_method = self.system.get_entry_by_name("some_reading_method", A)
         state0, state1 = reading_method.make_state(), reading_method.make_state("'")
@@ -183,9 +183,16 @@ class Py2SmtConformanceTests(SmtTestCase):
         self.assertImplies(tr, state1.eval(returned_var) == 1)
 
     def test_method_call_on_result(self):
-        return_self = self.system.get_entry_by_name("return_self", B)
+        return_self = self.system.get_entry_by_name("return_param", B)
         state0, state1 = return_self.make_state(), return_self.make_state("'")
         tr = return_self.cfg.get_transition_relation()(state0, state1)
         returned_var = return_self.cfg.return_var
         self.assertSat(tr)
-        self.assertImplies(tr, state1.eval(returned_var) == state0.eval("self"))
+        self.assertImplies(tr, state1.eval(f"{returned_var}") == state0.eval("param"))
+
+        return_self = self.system.get_entry_by_name("return_param2", B)
+        state0, state1 = return_self.make_state(), return_self.make_state("'")
+        tr = return_self.cfg.get_transition_relation()(state0, state1)
+        returned_var = return_self.cfg.return_var
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(f"{returned_var}") == state0.eval("param"))
