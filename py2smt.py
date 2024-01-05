@@ -8,13 +8,13 @@ from typing import List, Union, Type, Callable, Any, Dict
 
 from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSort)
 
-from .generators.generators import CodeGenerationDispatcher
-from .smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
+from generators.generators import CodeGenerationDispatcher
+from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
     is_pointer_type, get_or_create_pointer_by_name, \
     get_pointed_type, NoneTypeName, HELPER_SMT_FUNCTIONS, FloatType
-from .symbolic_interp import Signature, State
+from symbolic_interp import Signature, State
 import stdlib
-from .cfg import ControlFlowGraph
+from cfg import ControlFlowGraph
 
 
 class MethodObject:

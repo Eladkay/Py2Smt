@@ -5,8 +5,8 @@ import sys
 
 from z3 import IntSort, ArithSortRef
 
-from .cfg import ControlFlowGraph, ControlFlowNode
-from .symbolic_interp import Signature
+from cfg import ControlFlowGraph, ControlFlowNode
+from symbolic_interp import Signature
 
 
 class Lattice:
