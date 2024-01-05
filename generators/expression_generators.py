@@ -318,7 +318,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
                 self.graph.bp(ends[:-1], new_node)
             else:
                 start = new_node
-            self.graph.add_edge(new_node, new_label)
+            self.graph.add_edge(start, new_label)
             return DecoratedDataNode("z3_call", node, start, new_label,
                                      f"{name}({', '.join(map(str, exprs))})", None)
 
@@ -503,7 +503,7 @@ class ListCodeGenerator(AbstractCodeGenerator):
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
             return DecoratedDataNode("list", node, new_node, new_label,
-                                     'Empty(SeqSort(smt_helper.IntType))', SeqSort(smt_helper.IntType))
+                                     'Empty(SeqSort(IntSort()))', SeqSort(smt_helper.IntType))  # todo: expected type?
         starts, exprs, ends = zip(*[(item.start_node, item.place, item.end_label)
                                     for item in [self._process_expect_data(it) for it in node.elts]])
         starts_and_ends = list(zip(starts, ends))
