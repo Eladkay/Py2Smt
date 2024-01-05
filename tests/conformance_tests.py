@@ -66,6 +66,15 @@ class B(A):
         b.some_field = 1
         return a.some_field
 
+    def return_self(self) -> A:
+        return self
+
+    def return_self2(self) -> A:
+        return self.return_self()
+
+    def return_self3(self) -> A:
+        return self.return_self2().return_self()
+
 
 class Py2SmtConformanceTests(SmtTestCase):
     system = Py2Smt([A, B])
@@ -172,3 +181,11 @@ class Py2SmtConformanceTests(SmtTestCase):
         returned_var = object_field.cfg.return_var
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(returned_var) == 1)
+
+    def test_method_call_on_result(self):
+        return_self = self.system.get_entry_by_name("return_self", B)
+        state0, state1 = return_self.make_state(), return_self.make_state("'")
+        tr = return_self.cfg.get_transition_relation()(state0, state1)
+        returned_var = return_self.cfg.return_var
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(returned_var) == state0.eval("self"))

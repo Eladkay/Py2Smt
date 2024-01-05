@@ -33,6 +33,7 @@ class ConstRangeForLoopGenerator(AbstractCodeGenerator):
             self.graph.bp(blocks[-1][1], label)
         else:
             self.graph.add_edge(new_node, label)
+        self.graph.report_type(var, smt_helper.IntType)
         return DecoratedControlNode(f"const_range_for", node, new_node, label)
 
 
@@ -92,6 +93,7 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
         self.graph.bp(processed_body[-1].end_label, loop_node)
         self.graph.add_edge(loop_node, label, f"s.assume('Not(Or(And({backup_step} > 0, {var} < {backup_stop}), "
                                               f"And({backup_step} < 0, {var} > {backup_stop})))')")
+        self.graph.report_type(var, smt_helper.IntType)
         return DecoratedControlNode(f"var_range_for", tree, args_start, label)
 
 

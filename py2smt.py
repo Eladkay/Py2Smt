@@ -62,7 +62,7 @@ class MethodObject:
         return self._cfg
 
     def make_state(self, tag=""):
-        return State(self.sig, HELPER_SMT_FUNCTIONS, tag)
+        return State(self.sig, HELPER_SMT_FUNCTIONS, self.system.class_types, tag)
 
     @staticmethod
     def create_empty_constructor(system: 'Py2Smt', ty: Type,

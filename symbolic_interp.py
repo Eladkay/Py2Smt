@@ -8,7 +8,7 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
     get_or_create_pointer_by_name, get_heap_pointer_name, is_pointer_type, get_pointed_type, upcast_pointer, \
-    NoneTypeName
+    NoneTypeName, get_or_create_pointer, try_upcast
 
 
 class Signature:
@@ -42,10 +42,11 @@ class Signature:
 
 
 class State:
-    def __init__(self, sig: Signature, helpers: typing.Callable[[dict, dict], dict] | None,
+    def __init__(self, sig: Signature, helpers: typing.Callable[[dict, dict], dict] | None, class_types: dict,
                  suffix: str = ''):
         self.locals = {}
         self.path_constraint = []
+        self.class_types = class_types
         self.tag = suffix
         self.sig = sig
         self.locals = {name: Const(name + suffix, ty) for (name, ty) in sig.decls.items()}
@@ -61,32 +62,9 @@ class State:
                 target_value = new_values[target] if target in new_values else cloned.locals[target]
                 computed_value = self.eval(value)
                 if isinstance(target_value, ExprRef) and isinstance(computed_value, ExprRef) and \
-                        isinstance(target_value.sort(), DatatypeSortRef) and \
-                        isinstance(computed_value.sort(), DatatypeSortRef) and \
                         target_value.sort() != computed_value.sort():
-                    if is_pointer_type(target_value.sort()):
-                        assert is_pointer_type(computed_value.sort()) and isinstance(computed_value, DatatypeRef)
-                        # latter is for type checker, actually implied by the first one
-
-                        if computed_value.sort() == get_or_create_pointer_by_name(NoneTypeName):
-                            upcast_value = target_value.sort().constructor(0)(0)
-                        else:
-                            source_pointed_sort = get_pointed_type(computed_value.sort())
-                            target_pointed_sort = get_pointed_type(target_value.sort())
-                            upcast_value = upcast_pointer(computed_value, target_value.sort(),
-                                                          self.locals[get_heap_name(source_pointed_sort)])
-                            assert get_heap_name(target_pointed_sort) not in new_values
-                            assert get_heap_pointer_name(target_pointed_sort) not in new_values
-                            target_heap = self.locals[get_heap_name(target_pointed_sort)]
-                            target_hp = self.locals[get_heap_pointer_name(target_pointed_sort)]
-                            new_values[get_heap_name(target_pointed_sort)] = \
-                                Store(target_heap, target_hp, upcast_value)
-                            new_values[get_heap_pointer_name(target_pointed_sort)] = \
-                                target_hp + 1
-                            upcast_value = target_value.sort().constructor(0)(target_hp)
-                    else:
-                        upcast_value = upcast_expr(computed_value, target_value.sort())
-                    computed_value = upcast_value
+                    computed_value = try_upcast(self.locals, new_values, self.class_types, computed_value,
+                                                target_value.sort())
                 new_values[target] = computed_value
             cloned.locals.update(new_values)
         except Exception as exp:
@@ -123,7 +101,7 @@ class State:
         return expr
 
     def clone(self) -> 'State':
-        c = type(self)(self.sig, self.helpers, self.tag)
+        c = type(self)(self.sig, self.helpers, self.class_types, self.tag)
         c.locals = self.locals.copy()
         c.path_constraint = self.path_constraint.copy()
         c.middleware = self.middleware
@@ -134,7 +112,7 @@ class State:
         return [value for _, value in self.path_constraint]
 
     def make_concrete(self, model: ModelRef) -> 'State':
-        c = type(self)(self.sig)
+        c = type(self)(self.sig, self.helpers, self.class_types, self.tag)
         c.locals = {name: self.make_val_concrete(model, var) for name, var in self.locals.items()}
         return c
 

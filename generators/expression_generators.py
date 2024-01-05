@@ -49,13 +49,14 @@ class NameCodeGenerator(AbstractCodeGenerator):
                                  self.graph.get_type(node.id) if self.graph.has_type(node.id) else None)
 
 
-op_return_types = {ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: FloatType,
+op_return_types = {ast.Add: IntType, ast.Pow: IntType, ast.Sub: IntType, ast.Mult: IntType, ast.Div: FloatType,
                    ast.FloorDiv: IntType, ast.Mod: IntType, ast.Eq: BoolType, ast.NotEq: BoolType,
                    ast.Lt: BoolType, ast.LtE: BoolType, ast.Gt: BoolType, ast.GtE: BoolType,
                    ast.Is: BoolType, ast.IsNot: BoolType, ast.In: BoolType, ast.NotIn: BoolType,
                    ast.BitAnd: IntType, ast.BitOr: IntType, ast.BitXor: IntType, ast.LShift: IntType,
                    ast.RShift: IntType}
 bitwise_ops = [ast.BitAnd, ast.BitOr, ast.BitXor, ast.LShift, ast.RShift]
+argument_conforming_ops = [ast.Add, ast.Sub, ast.Mult]
 
 
 @handles(_ast.BinOp)
@@ -66,7 +67,8 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         right_decorated = self._process_expect_data(node.right)
         start1, expr1, end1 = left_decorated.start_node, left_decorated.place, left_decorated.end_label
         start2, expr2, end2 = right_decorated.start_node, right_decorated.place, right_decorated.end_label
-        if isinstance(node.op, ast.Add):
+        if (type(node.op) in argument_conforming_ops
+                    and self.graph.has_type(expr1) and self.graph.has_type(expr2)):  # todo: see comment later
             new_var = self.graph.fresh_var(self.graph.get_type(expr1))
         else:
             new_var = self.graph.fresh_var(op_return_types[type(node.op)])
@@ -88,6 +90,19 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
             self.graph.add_edge(new_node, new_label,
                                 "s.assign({" + f"'{new_var}': 'ToReal({expr1}) / ToReal({expr2})'" + "})")
         else:
+            if (type(node.op) in argument_conforming_ops
+                    and self.graph.has_type(expr1) and self.graph.has_type(expr2)):
+                # TODO. this exception is only needed for for loops because they do not currently declare their index
+                # variable. This needs to be fixed but not now.
+                is_real_op = self.graph.get_type(expr1) == FloatType or self.graph.get_type(expr2) == FloatType
+                if is_real_op:
+                    converters = {int: lambda x: f"IntVal({x})", float: lambda x: f"RealVal({x})", str: lambda x: x}
+                    expr1_boxed = converters[type(expr1)](expr1)
+                    expr2_boxed = converters[type(expr2)](expr2)
+                    if self.graph.get_type(expr1) == IntType:
+                        expr1 = f"ToReal({expr1_boxed})"
+                    if self.graph.get_type(expr2) == IntType:
+                        expr2 = f"ToReal({expr2_boxed})"
             self.graph.add_edge(new_node, new_label,
                                 "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
         return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.get_type(new_var))
@@ -333,6 +348,24 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
             self.graph.bp(ends[0], new_node)
             return DecoratedControlNode("assume", node, starts[0], new_label)
+
+        if called_function.name in ["append", "extend"]:
+            # todo!
+            if len(exprs) != 1:
+                self.type_error(f"Function {called_function.name} should have exactly one argument")
+            expr = exprs[0]
+            ty = self.graph.get_type(receiver)
+            if not isinstance(ty, SeqSortRef):
+                self.type_error(f"Function {called_function.name} should have a list argument")
+            new_node = self.graph.add_node(f"{receiver}.{called_function.name}({expr})")
+            new_label = self.graph.fresh_label()
+            if called_function.name == "append":
+                new_list = f"Concat({receiver}, Unit({expr}))"
+            else:
+                new_list = f"Concat({receiver}, {expr})"
+            self.graph.add_edge(new_node, new_label, f"s.assign({{'{receiver}': '{new_list}'}})")
+            self.graph.bp(ends[0], new_node)
+            return DecoratedControlNode("list_methods", node, starts[0], new_label)
 
         if called_function.name == "hash":
             if len(exprs) != 1:

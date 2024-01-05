@@ -3,7 +3,8 @@ from typing import Any, Union, Dict, Optional
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
-                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And, ToInt)
+                DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And, ToInt, Store,
+                ToReal)
 
 
 IntType = z3.IntSort()
@@ -26,6 +27,11 @@ def upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
         return var1 != 0
     if isinstance(real_type, BoolSortRef) and isinstance(target_sort, ArithSortRef):
         return If(var1, 1, 0)
+    if isinstance(real_type, ArithSortRef) and isinstance(target_sort, ArithSortRef):
+        if target_sort.is_int():
+            return ToInt(var1)
+        else:
+            return ToReal(var1)
     if not isinstance(var1.sort(), DatatypeSortRef) or not isinstance(target_sort, DatatypeSortRef):
         raise ValueError(f"Cannot cast sort {var1.sort()} to "
                          f"{target_sort} (one of the sorts is not a class)")
@@ -117,10 +123,39 @@ def get_pointed_type(ptr: DatatypeSortRef, fallback: Optional[Dict] = None) -> S
     ptr_to_concrete = {v: k for k, v in CONCRETE_TO_PTR.items()}
     if ptr in ptr_to_concrete:
         return ptr_to_concrete[ptr]
-    if fallback is not None:
+    if fallback is not None and ptr in fallback:
         return fallback[ptr]
     raise ValueError(f"Could not find pointed type for {ptr}!")
 
+
+def try_upcast(locals: dict, new_values: dict, class_types: dict,
+               computed_value: ExprRef, target_sort: SortRef) -> ExprRef:
+    if is_pointer_type(target_sort):
+        assert is_pointer_type(computed_value.sort()) and isinstance(computed_value, DatatypeRef)
+        assert isinstance(target_sort, DatatypeSortRef)
+        # latter is for type checker, actually implied by the first one
+
+        if computed_value.sort() == get_or_create_pointer_by_name(NoneTypeName):
+            upcast_value = target_sort.constructor(0)(0)
+        else:
+            fb = {get_or_create_pointer(ty): ty for ty in class_types.values()}
+            source_pointed_sort = get_pointed_type(computed_value.sort(), fb)
+            target_pointed_sort = get_pointed_type(target_sort, fb)
+
+            upcast_value = upcast_pointer(computed_value, target_sort,
+                                          locals[get_heap_name(source_pointed_sort)])
+            assert get_heap_name(target_pointed_sort) not in new_values
+            assert get_heap_pointer_name(target_pointed_sort) not in new_values
+            target_heap = locals[get_heap_name(target_pointed_sort)]
+            target_hp = locals[get_heap_pointer_name(target_pointed_sort)]
+            new_values[get_heap_name(target_pointed_sort)] = \
+                Store(target_heap, target_hp, upcast_value)
+            new_values[get_heap_pointer_name(target_pointed_sort)] = \
+                target_hp + 1
+            upcast_value = target_sort.constructor(0)(target_hp)
+    else:
+        upcast_value = upcast_expr(computed_value, target_sort)
+    return upcast_value
 
 # Helper SMT functions - functions that should be accessible from the generated
 # code but are not implementable in the code itself, usually because they need

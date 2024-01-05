@@ -1,4 +1,5 @@
 import functools
+import re
 import typing
 from dataclasses import dataclass
 from typing import Callable, Tuple, List, Any, Type
@@ -98,13 +99,18 @@ class ControlFlowGraph:
             return f"{get_or_create_pointer(ty)}.loc(0)"
         raise NotImplementedError(f"Cannot get default value for type {ty}")
 
+    INTEGER_LITERAL_REGEX = re.compile(r"[-+]?\d+")
     @staticmethod
-    def get_literal_type(value: str):
+    def get_literal_type(value: Any):
         if value is None:
             return None
+        if isinstance(value, int):
+            return IntType
+        if isinstance(value, float):
+            return FloatType
         try:
             int(value)
-            return IntType
+            return FloatType
         except ValueError:
             pass
         try:
@@ -112,7 +118,7 @@ class ControlFlowGraph:
             return FloatType
         except ValueError:
             pass
-        if value in ["True", "False"]:
+        if value in ["True", "False"] or isinstance(value, bool):
             return BoolSort
         if ((value.startswith('"') or value.startswith("\\\"")) and
                 (value.endswith('"') or value.endswith("\\\""))):
