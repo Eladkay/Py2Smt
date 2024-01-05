@@ -322,6 +322,30 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             return DecoratedDataNode("z3_call", node, start, new_label,
                                      f"{name}({', '.join(map(str, exprs))})", None)
 
+        if name in ["append", "extend"]:
+            if len(exprs) != 1:
+                self.type_error(f"Function {name} should have exactly one argument")
+            if receiver is None:
+                self.type_error(f"Function {name} should have a list receiver")
+            expr = exprs[0]
+            ty = self.graph.get_type(receiver)
+            if not isinstance(ty, SeqSortRef):
+                self.type_error(f"Function {name} should have a list argument")
+            if name == "append":
+                new_list = f"Concat({receiver}, singleton_list({expr}))"
+            else:
+                new_list = f"Concat({receiver}, {expr})"
+            new_var = self.graph.fresh_var(ty)
+            new_node = self.graph.add_node(f"{receiver}.{name}({expr})")
+            target = receiver_node.ast_node
+            target.ctx = ast.Store()
+            assign_node = self._process_expect_control(ast.Assign(targets=[target],
+                                                                  value=ast.Name(id=new_var)))
+            self.graph.bp(ends[0], receiver_node.start_node)
+            self.graph.bp(receiver_node.end_label, new_node)
+            self.graph.add_edge(new_node, assign_node.start_node, f"s.assign({{'{new_var}': '{new_list}'}})")
+            return DecoratedControlNode("list_methods", node, starts[0], assign_node.end_label)
+
         called_function = self.graph.system.get_entry_by_name(name, receiver_type)
         params = called_function.args
 
@@ -358,27 +382,6 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
             self.graph.bp(ends[0], new_node)
             return DecoratedControlNode("assume", node, starts[0], new_label)
-
-        if called_function.name in ["append", "extend"]:
-            # todo!
-            if len(exprs) != 1:
-                self.type_error(f"Function {called_function.name} should have exactly one argument")
-            if receiver is None:
-                self.type_error(f"Function {called_function.name} should have a list receiver")
-                # todo: should start by computing the receiver
-            expr = exprs[0]
-            ty = self.graph.get_type(receiver)
-            if not isinstance(ty, SeqSortRef):
-                self.type_error(f"Function {called_function.name} should have a list argument")
-            new_node = self.graph.add_node(f"{receiver}.{called_function.name}({expr})")
-            new_label = self.graph.fresh_label()
-            if called_function.name == "append":
-                new_list = f"Concat({receiver}, Unit({expr}))"
-            else:
-                new_list = f"Concat({receiver}, {expr})"
-            self.graph.add_edge(new_node, new_label, f"s.assign({{'{receiver}': '{new_list}'}})")
-            self.graph.bp(ends[0], new_node)
-            return DecoratedControlNode("list_methods", node, starts[0], new_label)
 
         if called_function.name == "hash":
             if len(exprs) != 1:
@@ -472,9 +475,13 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         value = self._process_expect_data(node.value)
         start, expr, end = value.start_node, value.place, value.end_label
         expr_type = self.graph.get_type(expr)
-        if not is_pointer_type(expr_type):
-            self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is not a pointer type")
+        if not is_pointer_type(expr_type) and not isinstance(expr_type, SeqSortRef):
+            self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is not a pointer type or a list type")
 
+        if isinstance(expr_type, SeqSortRef):
+            if node.attr in ["append", "extend"]:
+                return None
+            self.type_error(f"Cannot find field {node.attr} in {expr_type}, which is a list type")
         receiver_type = get_pointed_type(expr_type, {get_or_create_pointer(ty): ty
                                                      for ty in self.graph.system.class_types.values()})
         if not self.graph.system.is_field_of_class(receiver_type, node.attr):

@@ -1,10 +1,10 @@
 import functools
-from typing import Any, Union, Dict, Optional
+from typing import Any, Union, Dict, Optional, List
 
 import z3
 from z3 import (ExprRef, ArithSortRef, SortRef, BoolSortRef,
                 DatatypeSortRef, If, Datatype, SeqRef, StringVal, DatatypeRef, ArrayRef, BoolVal, And, ToInt, Store,
-                ToReal)
+                ToReal, SeqSort)
 
 
 IntType = z3.IntSort()
@@ -115,6 +115,12 @@ def singleton_list(t: Any) -> SeqRef:
     return z3.Unit(t)
 
 
+def list_of(l: List[Any], sort: SortRef) -> SeqRef:
+    if len(l) == 0:
+        return z3.Empty(SeqSort(sort))
+    return z3.Concat(singleton_list(l[0]), list_of(l[1:], sort))
+
+
 def is_pointer_type(ty: SortRef) -> bool:
     return ty in POINTER_TYPES.values()
 
@@ -157,6 +163,7 @@ def try_upcast(locals: dict, new_values: dict, class_types: dict,
         upcast_value = upcast_expr(computed_value, target_sort)
     return upcast_value
 
+
 # Helper SMT functions - functions that should be accessible from the generated
 # code but are not implementable in the code itself, usually because they need
 # sort information
@@ -196,10 +203,13 @@ def cast_to_int(locals, ctx, flt: ArithSortRef) -> ExprRef:
     return ToInt(flt)
 
 
-
 HELPER_SMT_FUNCTIONS = lambda locals, ctx: {k: functools.partial(v, locals, ctx)
                                             for k, v in {"deref": dereference_pointer, "ref": get_pointer_from_loc,
                                                          "id": get_loc_from_pointer,
                                                          "is_valid": is_pointer_memory_valid,
                                                          "is_valid_not_none": is_valid_not_none,
-                                                         "int": cast_to_int}.items()}
+                                                         "int": cast_to_int,
+                                                         "singleton_list": lambda locals, ctx, *args:
+                                                                           singleton_list(*args),
+                                                         "list_of": lambda locals, ctx, *args:
+                                                         list_of(*args)}.items()}

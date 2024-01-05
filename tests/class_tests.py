@@ -1,9 +1,10 @@
 import unittest
 from typing import List
 
-from z3 import Not
+from z3 import Not, Concat
 
 from py2smt import Py2Smt
+from smt_helper import list_of, IntType, singleton_list
 from stdlib import __assume__
 from tests.smt_test_case import SmtTestCase
 
@@ -33,6 +34,13 @@ class A:
         __assume__(0 <= idx < len(self.some_array))
         self.some_array[idx] += + 1
         return self.some_array[idx]
+
+    def list_append_and_extend(self):
+        self.some_array.append(1)
+        self.some_array.extend([1, 2, 3])
+
+    def assign_to_list(self):
+        self.some_array = [1, 2, 3]
 
 
 class RectangleTestClass:
@@ -181,6 +189,24 @@ class Py2SmtClassTests(SmtTestCase):
         state0, state1 = entry.make_state(), entry.make_state("'")
         tr = entry.cfg.get_transition_relation()(state0, state1)
         self.assertSat(tr)
+
+    def test_class_list_append_extend(self):
+        smt = Py2Smt([A])
+        entry = smt.get_entry_by_name("list_append_and_extend")
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval("A.some_array(deref(self))")
+                           == Concat(state0.eval("A.some_array(deref(self))"), list_of([1, 1, 2, 3], IntType)))
+
+    def test_assign_to_list(self):
+        smt = Py2Smt([A])
+        entry = smt.get_entry_by_name("assign_to_list")
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval("A.some_array(deref(self))")
+                           == list_of([1, 2, 3], IntType))
 
 
 if __name__ == '__main__':

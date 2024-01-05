@@ -147,7 +147,9 @@ class LRUMap[K, V]:
         self.header = LinkEntry(None, -1, None, None)
         self.header.before = self.header
         self.header.after = self.header
-        self.data = [None] * self.max_size  # TODO
+        self.data = [None]
+        for i in range(self.max_size - 1):
+            self.data.append(None)
 
     def get(self, key: K) -> V:
         entry = self._get_entry(key)
@@ -251,7 +253,9 @@ class LRUMap[K, V]:
             return
         if self.size == 0:
             self.threshold = int(new_capacity * self.load_factor)
-            self.data = [None] * new_capacity
+            self.data = [None]
+            for i in range(new_capacity - 1):
+                self.data.append(None)
             return
         old_entries = self.data
         new_entries = [None] * new_capacity

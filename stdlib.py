@@ -71,3 +71,9 @@ def id(s):
 
 def int(num: float) -> int:
     pass
+
+def singleton_list(s):
+    pass
+
+def list_of(l, sort):
+    pass

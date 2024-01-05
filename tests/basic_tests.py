@@ -2,6 +2,7 @@ import typing
 import unittest
 
 from py2smt import Py2Smt
+from smt_helper import singleton_list
 from stdlib import __assume__
 from tests.smt_test_case import SmtTestCase
 from z3 import *
@@ -230,6 +231,11 @@ class BasicTest:
 
     def floats(self, x: float, y: float, z: float) -> float:
         return x + y - 0.5*z
+
+    def basic_list_append_and_extend(self, x: typing.List[int], y: typing.List[int]) -> typing.List[int]:
+        x.append(1)
+        x.extend(y)
+        return x
 
 
 class Py2SmtBasicTests(SmtTestCase):
@@ -484,6 +490,16 @@ class Py2SmtBasicTests(SmtTestCase):
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(entry.cfg.return_var) ==
                            state0.eval("x") + state0.eval("y") - 0.5*state0.eval("z"))
+
+    def test_basic_list_append_and_extend(self):
+        smt = Py2Smt([BasicTest])
+        entry = smt.get_entry_by_name("basic_list_append_and_extend")
+        self.assertEqual(entry.args, ["self", "x", "y"])
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        self.assertSat(tr)
+        self.assertImplies(tr, state1.eval(entry.cfg.return_var) ==
+                           Concat(Concat(state0.eval("x"), singleton_list(1)), state0.eval("y")))
 
 
 if __name__ == '__main__':
