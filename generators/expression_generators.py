@@ -162,8 +162,8 @@ class CompareCodeGenerator(AbstractCodeGenerator):
             self.graph.bp(end_left, start_right)
             right_type = self.graph.get_type(var_right)
             if isinstance(op, ast.NotIn):
-                start, var, label = self._process_expect_data(ast.Compare(left=prev,
-                                                                          ops=[ast.In()], comparators=[comparator]))
+                node = self._process_expect_data(ast.Compare(left=prev, ops=[ast.In()], comparators=[comparator]))
+                start, var, label = node.start_node, node.place, node.end_label
                 components.append((start, label, f"Not({var})"))
             elif isinstance(op, ast.In):
                 if isinstance(right_type, ArraySortRef) and right_type.range() == smt_helper.BoolType:
@@ -178,8 +178,8 @@ class CompareCodeGenerator(AbstractCodeGenerator):
                 else:
                     self.type_error(f"Cannot handle inclusion checks for {type(self.graph.get_type(var_right))}")
             elif isinstance(op, ast.IsNot):
-                start, var, label = self._process_expect_data(ast.Compare(left=prev,
-                                                                          ops=[ast.Is()], comparators=[comparator]))
+                node = self._process_expect_data(ast.Compare(left=prev, ops=[ast.Is()], comparators=[comparator]))
+                start, var, label = node.start_node, node.place, node.end_label
                 components.append((start, label, f"Not({var})"))
             elif isinstance(op, ast.Is):
                 if not is_pointer_type(right_type):
@@ -498,7 +498,7 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         self.graph.add_edge(new_node, new_label,
                             "s.assign({" + f"'{new_var}': "
                                            f"'{receiver_type}.{node.attr}(deref({expr}))'"
-                            + "}" + f").assume('is_valid({new_var})')")
+                            + "}" + f")" + (f".assume('is_valid({new_var})')" if is_pointer_type(field_type) else ""))
         return DecoratedDataNode("attribute", node, start, new_label, new_var, field_type)
 
 

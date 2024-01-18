@@ -32,6 +32,8 @@ def upcast_expr(var1: ExprRef, target_sort: SortRef) -> ExprRef:
             return ToInt(var1)
         else:
             return ToReal(var1)
+    if target_sort == get_or_create_optional_type(real_type):
+        return target_sort.constructor(0)(var1)
     if not isinstance(var1.sort(), DatatypeSortRef) or not isinstance(target_sort, DatatypeSortRef):
         raise ValueError(f"Cannot cast sort {var1.sort()} to "
                          f"{target_sort} (one of the sorts is not a class)")

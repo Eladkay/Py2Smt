@@ -6,7 +6,7 @@ from typing import Callable, Tuple, List, Any, Type
 
 import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
-                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort)
+                ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort, SeqSort)
 
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
     get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType
@@ -143,6 +143,13 @@ class ControlFlowGraph:
         literal_type = ControlFlowGraph.get_literal_type(value)
         if literal_type is not None:
             return literal_type
+
+        if value == 'Empty(SeqSort(IntSort()))':
+            """
+            If you want your paper to see the light of day,
+            special, special case it all away.
+            """
+            return SeqSort(IntSort())
         raise ValueError(f"Cannot find type for {value}")
 
     @staticmethod

@@ -26,7 +26,9 @@ class AugAssignCodeGenerator(AbstractCodeGenerator):
 class AnnAssignCodeGenerator(AbstractCodeGenerator):
     def process_node(self, node: AST) -> DecoratedAst:
         self.graph.report_type(node.target.id, self.graph.system.get_type_from_annotation(node.annotation))
-        return self._process(ast.Assign(targets=[node.target], value=node.value))
+        if node.value:
+            return self._process(ast.Assign(targets=[node.target], value=node.value))
+        return self._process(ast.Pass())
 
 
 def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNode, value: DecoratedDataNode,

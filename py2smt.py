@@ -165,14 +165,14 @@ class Py2Smt:
                                       for it in annotations}
 
         for cls in self.classes:
-            superclasses = []
+            superclasses = set()
             queue = list(cls.__bases__)
             while queue:
                 superclass = queue[0]
                 queue = queue[1:]
-                superclasses.append(superclass)
+                superclasses.add(superclass)
                 queue.extend(superclass.__bases__)
-            superclasses.remove(object)  # trivial
+            superclasses = superclasses - {object, typing.Generic}  # trivial
             superclasses = [it for it in superclasses if it.__module__ != typing.__name__]
             self.class_fields[cls].update({field: self.class_fields[superclass][field]
                                            for superclass in superclasses
