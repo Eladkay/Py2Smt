@@ -2,12 +2,12 @@ import _ast
 import ast
 import sys
 from _ast import AST
-from typing import List
 
-from z3 import ArraySortRef, SeqSortRef, ArraySort, SetSort, SeqSort
+from z3 import ArraySortRef, SeqSortRef, ArraySort, SetSort
 
 import smt_helper
 from cfg import ControlFlowGraph
+from cfg_actions import AssignAction, AssumeAction, CompositeAction, NoAction
 from generators import misc_generators
 from generators.generators import AbstractCodeGenerator, handles, \
     DecoratedDataNode, CodeGenerationDispatcher, syntactic_replace, DecoratedAst, DecoratedControlNode
@@ -20,7 +20,7 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
     def process_node(self, node: AST) -> DecoratedDataNode:
 
         if isinstance(node.value, str):
-            val = f"\\\"{node.value}\\\"" if isinstance(node.value, str) else node.value
+            val = f"\"{node.value}\"" if isinstance(node.value, str) else node.value
             new_node = self.graph.add_node("pass")
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
@@ -28,8 +28,9 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
             val = self.graph.fresh_var(get_or_create_pointer_by_name(NoneTypeName))
             new_node = self.graph.add_node(f"{val} = None")
             new_label = self.graph.fresh_label()
-            self.graph.add_edge(new_node, new_label, f"s.assign("
-                                + "{" + f"'{val}': '{f"{get_or_create_pointer_by_name(NoneTypeName)}.ptr(0)"}'" + "})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(val,
+                                                                     f"{get_or_create_pointer_by_name(NoneTypeName)}"
+                                                                     f".ptr(0)"))
         else:
             val = node.value
             new_node = self.graph.add_node("pass")
@@ -80,15 +81,13 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
         if type(node.op) in bitwise_ops:
             expr1 = f"Int2BV({expr1}, 64)"
             expr2 = f"Int2BV({expr2}, 64)"
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': 'BV2Int({expr1} {op_string} {expr2})'" + "})")
-        elif type(node.op) == ast.Div:
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"BV2Int({expr1} {op_string} {expr2})"))
+        elif isinstance(node.op, ast.Div):
             if isinstance(expr1, int):
                 expr1 = f"IntVal({expr1})"
             if isinstance(expr2, int):
                 expr2 = f"IntVal({expr2})"
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': 'ToReal({expr1}) / ToReal({expr2})'" + "})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"ToReal({expr1}) / ToReal({expr2})"))
         else:
             if (type(node.op) in argument_conforming_ops
                     and self.graph.has_type(expr1) and self.graph.has_type(expr2)):
@@ -103,8 +102,7 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
                         expr1 = f"ToReal({expr1_boxed})"
                     if self.graph.get_type(expr2) == IntType:
                         expr2 = f"ToReal({expr2_boxed})"
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': '{expr1} {op_string} {expr2}'" + "})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{expr1} {op_string} {expr2}"))
         return DecoratedDataNode("binop", node, start1, new_label, new_var, self.graph.get_type(new_var))
 
 
@@ -212,7 +210,7 @@ class UnaryOpCodeGenerator(AbstractCodeGenerator):
         new_node = self.graph.add_node(f"{new_var} = {op_string} {expr}")
         self.graph.bp(end, new_node)
         new_label = self.graph.fresh_label()
-        self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{op_string} {expr}'" + "})")
+        self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{op_string} {expr}"))
         return DecoratedDataNode("unaryop", node, start, new_label, new_var, smt_helper.IntType)
 
 
@@ -234,29 +232,26 @@ class SubscriptCodeGenerator(AbstractCodeGenerator):
             new_var = self.graph.fresh_var(value_sort.constructor(0).domain(0))
             new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
             self.graph.bp(end2, new_node)
-            self.graph.add_edge(new_node, new_label,
-                                "s.assign({" + f"'{new_var}': '{value_sort}.val({expr1}[{expr2}])'" + "})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{value_sort}.val({expr1}[{expr2}])"))
         elif isinstance(value_type, SeqSortRef):
             if value_type.is_string():
                 value_sort = smt_helper.StringType
                 new_var = self.graph.fresh_var(value_sort)
                 new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
                 self.graph.bp(end2, new_node)
-                self.graph.add_edge(new_node, new_label,
-                                    "s.assign({" + f"'{new_var}': 'SubString({expr1}, {expr2}, 1)'" + "})")
+                self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"SubString({expr1}, {expr2}, 1)"))
             else:
                 value_sort = value_type.basis()
                 new_var = self.graph.fresh_var(value_sort)
                 new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
                 self.graph.bp(end2, new_node)
-                self.graph.add_edge(new_node, new_label,
-                                    "s.assign({" + f"'{new_var}': '{expr1}[{expr2}]'" + "})")
+                self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{expr1}[{expr2}]"))
         else:
             value_sort = value_type.range()
             new_var = self.graph.fresh_var(value_sort)
             new_node = self.graph.add_node(f"{new_var} = {expr1}[{expr2}]")
             self.graph.bp(end2, new_node)
-            self.graph.add_edge(new_node, new_label, "s.assign({" + f"'{new_var}': '{expr1}[{expr2}]'" + "})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{expr1}[{expr2}]"))
         return DecoratedDataNode("subscript", node, start1, new_label, new_var, value_sort)
 
 
@@ -296,6 +291,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         def check_receiver():
             if receiver is None:
                 raise ValueError(f"Called member function {name} without receiver.")
+
         return syntactic_replace(f"{name}_self", _ast.Name(receiver), transformed, check_receiver)
 
     def process_node(self, node: AST) -> DecoratedAst:
@@ -343,7 +339,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
                                                                   value=ast.Name(id=new_var)))
             self.graph.bp(ends[0], receiver_node.start_node)
             self.graph.bp(receiver_node.end_label, new_node)
-            self.graph.add_edge(new_node, assign_node.start_node, f"s.assign({{'{new_var}': '{new_list}'}})")
+            self.graph.add_edge(new_node, assign_node.start_node, AssignAction.of(new_var, new_list))
             return DecoratedControlNode("list_methods", node, starts[0], assign_node.end_label)
 
         called_function = self.graph.system.get_entry_by_name(name, receiver_type)
@@ -379,7 +375,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
                 self.type_error("The assume expression should not have a receiver")
             new_node = self.graph.add_node(f"assume {exprs[0]}")
             new_label = self.graph.fresh_label()
-            self.graph.add_edge(new_node, new_label, f"s.assume('{exprs[0]}')")
+            self.graph.add_edge(new_node, new_label, AssumeAction(exprs[0]))
             self.graph.bp(ends[0], new_node)
             return DecoratedControlNode("assume", node, starts[0], new_label)
 
@@ -395,7 +391,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
             new_label = self.graph.fresh_label()
             type_string = self.graph.type_to_place_string(ty)
             function = f'Function(f"hash_{type_string}", {type_string}, IntSort())'
-            self.graph.add_edge(new_node, new_label, f"s.assign({{ '{new_var}': '{function}({expr})' }})")
+            self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"{function}({expr})"))
             self.graph.bp(ends[0], new_node)
             return DecoratedDataNode("hash", node, starts[0], new_label, new_var, IntType)
 
@@ -403,7 +399,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
         if called_function.name == "__init__":
             # Allocate memory
             tree.body[0].body.insert(0, ast.parse(f"self = __literal__('ref({get_heap_pointer_name(called_function.cls)}, "
-                                                  f"\\\\\"{called_function.cls.__name__}\\\\\")')").body[0])
+                                                   f"\\\"{called_function.cls.__name__}\\\")')").body[0])
             tree.body[0].body.insert(1, ast.parse(f"{get_heap_pointer_name(called_function.cls)} += 1").body[0])
             tree.body[0].body.append(ast.parse(f"return self").body[0])
 
@@ -495,10 +491,9 @@ class AttributeCodeGenerator(AbstractCodeGenerator):
         new_node = self.graph.add_node(f"{new_var} = {expr}.{node.attr}")
         self.graph.bp(end, new_node)
         new_label = self.graph.fresh_label()
-        self.graph.add_edge(new_node, new_label,
-                            "s.assign({" + f"'{new_var}': "
-                                           f"'{receiver_type}.{node.attr}(deref({expr}))'"
-                            + "}" + f")" + (f".assume('is_valid({new_var})')" if is_pointer_type(field_type) else ""))
+        assign_action = AssignAction.of(new_var, f"{receiver_type}.{node.attr}(deref({expr}))")
+        assume_action = AssumeAction(f"is_valid({new_var})") if is_pointer_type(field_type) else NoAction
+        self.graph.add_edge(new_node, new_label, CompositeAction.of(assign_action, assume_action))
         return DecoratedDataNode("attribute", node, start, new_label, new_var, field_type)
 
 

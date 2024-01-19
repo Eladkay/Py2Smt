@@ -29,3 +29,6 @@ class SmtTestCase(unittest.TestCase):
         if solver.check() == sat:
             self.fail(f"{a} is not unsatisfiable (model: {solver.model()})")
 
+    def assertValid(self, a):
+        self.assertUnsat(Not(a))
+

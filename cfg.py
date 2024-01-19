@@ -8,6 +8,7 @@ import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
                 ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort, SeqSort)
 
+from cfg_actions import Action, NoAction, CompositeAction
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
     get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType
 from symbolic_interp import State, Signature
@@ -40,10 +41,10 @@ class Label:
 class ControlFlowEdge:
     source: typing.Union[Label, ControlFlowNode]
     target: typing.Union[Label, ControlFlowNode]
-    action: str
+    action: Action
 
-    def perform_action(self, s: State):  # todo: refactor to remove the use of eval
-        return eval(self.action)  # uses s internally
+    def perform_action(self, s: State):
+        return self.action.perform_action(s)
 
     def __hash__(self):
         return hash(str(self))
@@ -193,7 +194,7 @@ class ControlFlowGraph:
         return new_nodes[other.start], new_end_label
 
     def add_edge(self, src: ControlFlowNode, dst: typing.Union[Label, ControlFlowNode],
-                 action: str = "s"):
+                 action: Action = NoAction):
         assert not isinstance(src, Label)
         edge = ControlFlowEdge(src, dst, action)
         self.edges.add(edge)
@@ -327,12 +328,12 @@ class ControlFlowGraph:
             if edge1.target.label == ControlFlowGraph.PASS:
                 for edge2 in self.edges:
                     if edge2.source == edge1.target:
-                        if edge1.action == "s":
+                        if edge1.action == NoAction:
                             action = edge2.action
-                        elif edge2.action == "s":
+                        elif edge2.action == NoAction:
                             action = edge1.action
                         else:
-                            action = f"((lambda s: ({edge1.action}))({edge2.action}))"
+                            action = CompositeAction.of(edge1.action, edge2.action)
                         to_add.add(ControlFlowEdge(edge1.source, edge2.target, action))
         self.edges.update(to_add)
 

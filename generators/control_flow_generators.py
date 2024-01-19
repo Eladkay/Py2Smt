@@ -1,6 +1,7 @@
 import _ast
 from _ast import AST
 
+from cfg_actions import AssumeAction
 from generators.generators import AbstractCodeGenerator, handles, \
     DecoratedControlNode
 
@@ -47,8 +48,8 @@ class AssertCodeGenerator(AbstractCodeGenerator):
         label = self.graph.fresh_label()
         new_node = self.graph.add_node(f"assert {test_place}")
         self.graph.bp(test_end, new_node)
-        self.graph.add_edge(new_node, label, f"s.assume('{test_place}')")
-        self.graph.add_edge(new_node, self.graph.error, f"s.assume('Not({test_place})')")
+        self.graph.add_edge(new_node, label, AssumeAction(test_place))
+        self.graph.add_edge(new_node, self.graph.error, AssumeAction(f"Not({test_place})"))
         return DecoratedControlNode(f"assert {test_place}", node, test_start, label)
 
 
@@ -62,10 +63,10 @@ class WhileCodeGenerator(AbstractCodeGenerator):
         self.graph.bp(test_end, new_node)
 
         next_label = self.graph.fresh_label()
-        self.graph.add_edge(new_node, next_label, f"s.assume('Not({test_place})')")
+        self.graph.add_edge(new_node, next_label, AssumeAction(f"Not({test_place})"))
 
         first_decorated = self._process_expect_control(node.body[0])
-        self.graph.add_edge(new_node, first_decorated.start_node, f"s.assume('{test_place}')")
+        self.graph.add_edge(new_node, first_decorated.start_node, AssumeAction(test_place))
 
         self.graph.bp_list([(stmt.start_node, stmt.end_label)
                             for stmt in [self._process_expect_control(node) for node in node.body]])
@@ -92,22 +93,22 @@ class IfCodeGenerator(AbstractCodeGenerator):
 
         if len(node.body) > 0:
             first_decorated = self._process_expect_control(node.body[0])
-            self.graph.add_edge(new_node, first_decorated.start_node, f"s.assume(\'{test_place}\')")
+            self.graph.add_edge(new_node, first_decorated.start_node, AssumeAction(test_place))
             self.graph.bp_list([(stmt.start_node, stmt.end_label)
                                 for stmt in [self._process_expect_control(node) for node in node.body]])
             last_decorated = self._process_expect_control(node.body[-1])
             self.graph.bp(last_decorated.end_label, next_label)
         else:
-            self.graph.add_edge(new_node, next_label, f"s.assume(\'{test_place}\')")
+            self.graph.add_edge(new_node, next_label, AssumeAction(test_place))
 
         if len(node.orelse) > 0:
             first_decorated = self._process_expect_control(node.orelse[0])
-            self.graph.add_edge(new_node, first_decorated.start_node, f"s.assume(\'Not({test_place})\')")
+            self.graph.add_edge(new_node, first_decorated.start_node, AssumeAction(f"Not({test_place})"))
             self.graph.bp_list([(stmt.start_node, stmt.end_label)
                                 for stmt in [self._process_expect_control(node) for node in node.orelse]])
             last_decorated = self._process_expect_control(node.orelse[-1])
             self.graph.bp(last_decorated.end_label, next_label)
         else:
-            self.graph.add_edge(new_node, next_label, f"s.assume('Not({test_place}"f")')")
+            self.graph.add_edge(new_node, next_label, AssumeAction(f"Not({test_place})"))
 
         return DecoratedControlNode(f"if {test_place}", node, test_start, next_label)

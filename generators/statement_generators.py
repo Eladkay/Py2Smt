@@ -5,6 +5,7 @@ from _ast import AST
 from z3 import ArraySortRef, SeqSortRef
 
 from cfg import ControlFlowGraph, ControlFlowNode
+from cfg_actions import AssignAction
 from generators.generators import AbstractCodeGenerator, DecoratedAst, handles, \
     DecoratedControlNode, DecoratedDataNode
 from smt_helper import IntType, get_heap_name, is_pointer_type, get_pointed_type
@@ -170,7 +171,7 @@ class AssignCodeGenerator(AbstractCodeGenerator):
         else:
             self.type_error(f"Unsupported assignment target {target}")
         self.graph.bp(right_end, new_node)
-        self.graph.add_edge(new_node, next_label, "s.assign({\"" + left_place + "\": \"" + str(right_place) + "\"})")
+        self.graph.add_edge(new_node, next_label, AssignAction.of(left_place, right_place))
         return DecoratedControlNode(f"{left_place} = {right_place}", node, left_start, next_label)
 
 
@@ -189,8 +190,7 @@ class ReturnCodeGenerator(AbstractCodeGenerator):
             value_start, value_place, value_end = value.start_node, value.place, value.end_label
             new_node = self.graph.add_node(f"{self.graph.return_var} = {value_place}")
             self.graph.bp(value_end, new_node)
-            self.graph.add_edge(new_node, next_label, "s.assign({\"" + self.graph.return_var +
-                                "\": \"" + str(value_place) + "\"})")
+            self.graph.add_edge(new_node, next_label, AssignAction.of(self.graph.return_var, value_place))
             self.graph.bp(next_label, self.graph.end)
             return DecoratedControlNode(f"return {value_start}", node, value_start, next_label)
 

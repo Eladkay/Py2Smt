@@ -71,12 +71,10 @@ class State:
             raise type(exp)(f"Failed to assign {values}") from exp
         return cloned
 
-    def assume(self, cond: typing.Union[ExprRef, bool]) -> 'State':
+    def assume(self, cond: typing.Union[ExprRef, bool, str]) -> 'State':
         cond = self.eval(cond)
-        if cond is True:
-            cond = BoolVal(True)
-        elif cond is False:
-            cond = BoolVal(False)
+        if isinstance(cond, bool):
+            cond = BoolVal(cond)
         cloned = self.clone()
         cloned.path_constraint.append((cond.get_id(), cond))
         return cloned

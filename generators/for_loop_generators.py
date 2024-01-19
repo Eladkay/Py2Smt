@@ -5,6 +5,7 @@ from typing import cast
 from z3 import SeqSortRef
 
 import smt_helper
+from cfg_actions import AssignAction, AssumeAction
 from generators.generators import AbstractCodeGenerator, handles, DecoratedControlNode, syntactic_replace
 
 
@@ -70,29 +71,27 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
         backup_step_node = self.graph.add_node(f"{backup_step} = {step}")
         fake_range_function = self._process_expect_data(tree.iter)
         self.graph.bp(fake_range_function.end_label, backup_stop_node)
-        self.graph.add_edge(backup_stop_node, backup_step_node, "s.assign({" + f"'{backup_stop}': '{stop}'" + "})")
+        self.graph.add_edge(backup_stop_node, backup_step_node, AssignAction.of(backup_stop, stop))
 
         self.graph.report_type(var, smt_helper.IntType)
         initialize_index_node = self.graph.add_node(f"{var} = {start}")
-        self.graph.add_edge(backup_step_node, initialize_index_node, "s.assign({" + f"'{backup_step}': '{step}'" + "})")
+        self.graph.add_edge(backup_step_node, initialize_index_node, AssignAction.of(backup_step, step))
 
         loop_node = self.graph.add_node(f"for {var} in range({', '.join([it.place for it in args])})")
-        self.graph.add_edge(initialize_index_node, loop_node, "s.assign({" + f"'{var}': '{start}'" + "})")
+        self.graph.add_edge(initialize_index_node, loop_node, AssignAction.of(var, start))
 
         increment_node = self.graph.add_node(f"{var} = {var} + {backup_step}")
-        self.graph.add_edge(loop_node, increment_node,
-                            f"s.assume('Or(And({backup_step} > 0, {var} < {backup_stop}), "
-                            f"And({backup_step} < 0, {var} > {backup_stop}))')")
+        self.graph.add_edge(loop_node, increment_node, AssumeAction(f"Or(And({backup_step} > 0, {var} < {backup_stop}),"
+                                                                    f" And({backup_step} < 0, {var} > {backup_stop}))"))
 
         processed_body = [self._process_expect_control(b) for b in tree.body]
-        self.graph.add_edge(increment_node, processed_body[0].start_node,
-                            "s.assign({" + f"'{var}': '{var} + {backup_step}'" + "})")
+        self.graph.add_edge(increment_node, processed_body[0].start_node, AssignAction.of(var, f"{var} + {backup_step}"))
         self.graph.bp_list([(stmt.start_node, stmt.end_label) for stmt in processed_body])
 
         label = self.graph.fresh_label()
         self.graph.bp(processed_body[-1].end_label, loop_node)
-        self.graph.add_edge(loop_node, label, f"s.assume('Not(Or(And({backup_step} > 0, {var} < {backup_stop}), "
-                                              f"And({backup_step} < 0, {var} > {backup_stop})))')")
+        self.graph.add_edge(loop_node, label, AssumeAction(f"Not(Or(And({backup_step} > 0, {var} < {backup_stop}), "
+                                                           f"And({backup_step} < 0, {var} > {backup_stop})))"))
         self.graph.report_type(var, smt_helper.IntType)
         return DecoratedControlNode(f"var_range_for", tree, args_start, label)
 
@@ -120,14 +119,14 @@ class ListForLoopGenerator(AbstractCodeGenerator):
         processed_body = [self._process_expect_control(b) for b in tree.body]
 
         self.graph.bp(iterable.end_label, backup_node)
-        self.graph.add_edge(backup_node, init_node, "s.assign({" + f"'{list_backup}': '{iterable.place}'" + "})")
-        self.graph.add_edge(init_node, for_node, "s.assign({" + f"'{idx}': '0'" + "})")
-        self.graph.add_edge(for_node, next_label, f"s.assume('{idx} >= Length({list_backup})')")
-        self.graph.add_edge(for_node, set_loopvar, f"s.assume('{idx} < Length({list_backup})')")
+        self.graph.add_edge(backup_node, init_node, AssignAction.of(list_backup, iterable.place))
+        self.graph.add_edge(init_node, for_node, AssignAction.of(idx, '0'))
+        self.graph.add_edge(for_node, next_label, AssumeAction(f"{idx} >= Length({list_backup})"))
+        self.graph.add_edge(for_node, set_loopvar, AssumeAction(f"{idx} < Length({list_backup})"))
         self.graph.add_edge(set_loopvar, processed_body[0].start_node,
-                            f"s.assign({{ '{tree.target.id}': '{list_backup}[{idx}]' }})")
+                            AssignAction.of(tree.target.id, f"{list_backup}[{idx}]"))
         self.graph.bp_list([(stmt.start_node, stmt.end_label) for stmt in processed_body])
         self.graph.bp(processed_body[-1].end_label, increment)
-        self.graph.add_edge(increment, for_node, "s.assign({" + f"'{idx}': '{idx} + 1'" + "})")
+        self.graph.add_edge(increment, for_node, AssignAction.of(idx, f"{idx} + 1"))
 
         return DecoratedControlNode(f"list_for", tree, iterable.start_node, next_label)
