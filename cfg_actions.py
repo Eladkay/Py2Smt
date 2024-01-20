@@ -88,7 +88,7 @@ class AssignAction(Action):
                     assignment[key] = self.assignment[key]
             return AssignAction(assignment)
         if isinstance(other, CompositeAction):
-            return CompositeAction.of(*other.actions, self)
+            return CompositeAction.of(self, *other.actions)
         if other == NoAction:
             return self
         if isinstance(other, AssumeAction):
@@ -165,37 +165,44 @@ class CompositeAction(Action):
             return CompositeAction(self.actions + other.actions)
         if other == NoAction:
             return self
-        return super()._combine_actions(other)
+        return super()._combine_actions(other).simplify()
 
     def simplify(self) -> 'Action':
+        def inline_composites(acts):
+            while any(isinstance(action, CompositeAction) for action in acts):
+                new_actions = []
+                for action in acts:
+                    if isinstance(action, CompositeAction):
+                        new_actions.extend(action.actions)
+                    else:
+                        new_actions.append(action)
+                acts = new_actions
+            return acts
         actions = self.actions
         if len(actions) == 1:
             return actions[0].simplify()
 
         actions = [action.simplify() for action in actions if not action == NoAction]
 
+        actions = inline_composites(actions)
+
         if len(actions) == 0:  # e.g. if all actions were empty composites or just nops
             return NoAction
 
-        partitions = []
-        current_partition = [actions[0]]
-        for action in actions[1:]:
-            if isinstance(action, type(current_partition[0])):
-                current_partition.append(action)
-            else:
-                partitions.append(current_partition)
-                current_partition = [action]
+        ret = functools.reduce(lambda x, y: x._combine_actions(y), actions)
+        old_ret = None
+        # todo: combining actions doesn't really work because if the first two actions
+        # don't combine, the next ones won't either because now the first two are a composite
+        while old_ret != ret:
+            old_ret = ret
+            ret = functools.reduce(lambda x, y: x._combine_actions(y), actions)
 
-        partitions.append(current_partition)
-        assert all(len(it) > 0 for it in partitions)
-
-        new_actions = [functools.reduce(lambda x, y: x._combine_actions(y), partition)
-                       for partition in partitions]  # todo, maybe don't combine just within partitions?
-
-        if len(new_actions) == 1:
-            ret = new_actions[0]
-        else:
-            ret = CompositeAction(new_actions)
+            if isinstance(ret, CompositeAction):
+                inlined = inline_composites(ret.actions)
+                if len(inlined) == 1:
+                    ret = inlined[0]
+                else:
+                    ret = CompositeAction(inlined)
         if ret == self:
             return self
         return ret.simplify()

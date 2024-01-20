@@ -318,6 +318,7 @@ class ControlFlowGraph:
             self._reduce_diamonds()
 
     def _combine_paths(self):
+        # TODO: this needs someone who understands algorithms to give it a full rewrite.
         def in_degree(n):
             return sum(1 for edge in self.edges if edge.target == n)
 
@@ -337,9 +338,9 @@ class ControlFlowGraph:
                 if len(nexts) == 0:
                     break
                 curr = nexts[0]
-                if curr in path or curr == self.end:
+                if curr in path:
                     break
-            if len(path) > 2:
+            if len(path) >= 2 and any(edge.source == path[-1] for edge in self.edges):
                 paths.append(path)
 
         maximal_path_containing_node = {}
@@ -368,6 +369,8 @@ class ControlFlowGraph:
             for node in path:
                 if node in self.nodes:
                     self.nodes.remove(node)
+            if self.end in path:
+                self.end = new_node
 
     def _reduce_diamonds(self):
         # TODO
