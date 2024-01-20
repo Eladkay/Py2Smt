@@ -175,10 +175,10 @@ class Py2SmtConformanceTests(SmtTestCase):
         self.assertImplies(tr, state1.eval(returned_var) == 1)
 
     def test_aliasing(self):
-        object_field = self.system.get_entry_by_name("aliasing", B)
-        state0, state1 = object_field.make_state(), object_field.make_state("'")
-        tr = object_field.cfg.get_transition_relation()(state0, state1)
-        returned_var = object_field.cfg.return_var
+        entry = self.system.get_entry_by_name("aliasing", B)
+        state0, state1 = entry.make_state(), entry.make_state("'")
+        tr = entry.cfg.get_transition_relation()(state0, state1)
+        returned_var = entry.cfg.return_var
         self.assertSat(tr)
         self.assertImplies(tr, state1.eval(returned_var) == 1)
 

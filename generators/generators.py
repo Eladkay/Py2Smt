@@ -1,8 +1,8 @@
 import ast
-from _ast import AST, expr
+from _ast import AST
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Type, Union, List, NoReturn, Callable, Optional
+from typing import Type, Union, List, NoReturn, Optional
 
 from copy import deepcopy
 from z3 import SortRef
@@ -156,12 +156,3 @@ class AbstractCodeGenerator:
         raise Py2SmtException(f"type error: {message}")
 
 
-def syntactic_replace(name: str, value: expr, tree: AST, action: Callable = (lambda: 0)) -> AST:
-    class SynReplace(ast.NodeTransformer):
-        def visit_Name(self, node):
-            if node.id == name:
-                action()
-                return value
-            return node
-
-    return SynReplace().visit(deepcopy(tree))

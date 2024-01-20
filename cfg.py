@@ -10,7 +10,7 @@ from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
 
 from cfg_actions import Action, NoAction, CompositeAction
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
-    get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType
+    get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType, BoolType
 from symbolic_interp import State, Signature
 
 
@@ -101,6 +101,7 @@ class ControlFlowGraph:
         raise NotImplementedError(f"Cannot get default value for type {ty}")
 
     INTEGER_LITERAL_REGEX = re.compile(r"[-+]?\d+")
+
     @staticmethod
     def get_literal_type(value: Any):
         if value is None:
@@ -111,7 +112,7 @@ class ControlFlowGraph:
             return FloatType
         try:
             int(value)
-            return FloatType
+            return IntType
         except ValueError:
             pass
         try:
@@ -120,7 +121,7 @@ class ControlFlowGraph:
         except ValueError:
             pass
         if value in ["True", "False"] or isinstance(value, bool):
-            return BoolSort
+            return BoolType
         if ((value.startswith('"') or value.startswith("\\\"")) and
                 (value.endswith('"') or value.endswith("\\\""))):
             return StringType
@@ -177,7 +178,7 @@ class ControlFlowGraph:
                                                   ty in self.system.class_types else ty
         if var in self.types and self.types[var] != new_type:
             raise ValueError(f"Type redeclaration for {var}: {self.types[var]} vs {new_type}")
-        assert isinstance(new_type, SortRef)
+        assert isinstance(new_type, SortRef), f"Type {new_type} is not a SortRef"
         self.types[var] = new_type
 
     def add_node(self, name: str) -> ControlFlowNode:
@@ -301,7 +302,7 @@ class ControlFlowGraph:
         # remove skip nodes
         for _ in self.nodes:
             self._clean_skip()
-        self.nodes = list(filter(lambda x: x.label != ControlFlowGraph.PASS, self.nodes))
+        self.nodes = set(filter(lambda x: x.label != ControlFlowGraph.PASS, self.nodes))
 
         # clean useless edges (must be done after skip removal)
         to_remove = []
@@ -311,6 +312,67 @@ class ControlFlowGraph:
         for edge in to_remove:
             self.edges.remove(edge)
 
+    def optimize_graph(self, passes=1):
+        for _ in range(passes):
+            self._combine_paths()
+            self._reduce_diamonds()
+
+    def _combine_paths(self):
+        def in_degree(n):
+            return sum(1 for edge in self.edges if edge.target == n)
+
+        def out_degree(n):
+            return sum(1 for edge in self.edges if edge.source == n)
+
+        nodes = [node for node in self.nodes if in_degree(node) <= 1 and out_degree(node) <= 1]
+        paths = []
+        for node in nodes:
+            if node in [self.start, self.end]:
+                continue
+            path = ()
+            curr = node
+            while in_degree(curr) <= 1 and out_degree(curr) <= 1:
+                path += (curr,)
+                nexts = [edge.target for edge in self.edges if edge.source == curr]
+                if len(nexts) == 0:
+                    break
+                curr = nexts[0]
+                if curr in path or curr == self.end:
+                    break
+            if len(path) > 2:
+                paths.append(path)
+
+        maximal_path_containing_node = {}
+        for path in paths:
+            for node in path:
+                if node not in maximal_path_containing_node or \
+                        len(maximal_path_containing_node[node]) < len(path):
+                    maximal_path_containing_node[node] = path
+
+        paths_to_shrink = set(maximal_path_containing_node.values())
+        for path in paths_to_shrink:
+            edges = [edge for node in path for edge in [ed for ed in self.edges if ed.source == node]]
+            actions = [edge.action for edge in edges]
+            new_action = CompositeAction(actions).simplify()
+            new_node = self.add_node(f"[{', \n'.join([node.label for node in path])}]")
+            ingoing_edges = [edge for edge in self.edges if edge.target == path[0]]
+            if ingoing_edges:
+                ingoing_edges[0].target = new_node
+            outgoing_edges = [edge for edge in self.edges if edge.source == path[-1]]
+            if outgoing_edges:
+                outgoing_edges[0].source = new_node
+                outgoing_edges[0].action = new_action
+            for edge in edges:
+                if edge not in outgoing_edges:
+                    self.edges.remove(edge)
+            for node in path:
+                if node in self.nodes:
+                    self.nodes.remove(node)
+
+    def _reduce_diamonds(self):
+        # TODO
+        pass
+
     def export_to_dot(self):
         from graphviz import Digraph
         dot = Digraph()
@@ -319,7 +381,7 @@ class ControlFlowGraph:
         for label in self.labels:
             dot.node(str(label))
         for edge in self.edges:
-            dot.edge(str(edge.source), str(edge.target), edge.action)
+            dot.edge(str(edge.source), str(edge.target), str(edge.action))
         return dot
 
     def _clean_skip(self):

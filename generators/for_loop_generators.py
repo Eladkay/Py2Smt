@@ -6,7 +6,8 @@ from z3 import SeqSortRef
 
 import smt_helper
 from cfg_actions import AssignAction, AssumeAction
-from generators.generators import AbstractCodeGenerator, handles, DecoratedControlNode, syntactic_replace
+from generators.generators import AbstractCodeGenerator, handles, DecoratedControlNode
+from common import syntactic_replace
 
 
 @handles(ast.For)
@@ -75,10 +76,10 @@ class VariableRangeForLoopGenerator(AbstractCodeGenerator):
 
         self.graph.report_type(var, smt_helper.IntType)
         initialize_index_node = self.graph.add_node(f"{var} = {start}")
-        self.graph.add_edge(backup_step_node, initialize_index_node, AssignAction.of(backup_step, step))
+        self.graph.add_edge(backup_step_node, initialize_index_node, AssignAction.of(backup_step, str(step)))
 
         loop_node = self.graph.add_node(f"for {var} in range({', '.join([it.place for it in args])})")
-        self.graph.add_edge(initialize_index_node, loop_node, AssignAction.of(var, start))
+        self.graph.add_edge(initialize_index_node, loop_node, AssignAction.of(var, str(start)))
 
         increment_node = self.graph.add_node(f"{var} = {var} + {backup_step}")
         self.graph.add_edge(loop_node, increment_node, AssumeAction(f"Or(And({backup_step} > 0, {var} < {backup_stop}),"

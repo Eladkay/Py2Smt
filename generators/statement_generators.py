@@ -45,7 +45,7 @@ def generate_code_for_subscript(array: DecoratedDataNode, index: DecoratedDataNo
     domain = arr_type.domain() if isinstance(arr_type, ArraySortRef) else IntType
     rang = arr_type.range() if isinstance(arr_type, ArraySortRef) else arr_type.basis()
     if idx_type != domain:
-        gen.type_error(f"{index.place} is not in the domain {domain} of {array.place}!")
+        gen.type_error(f"{index.place} is not in the domain {domain} of {array.place} (has type {idx_type})!")
 
     idx_start, idx_place, idx_end = index.start_node, index.place, index.end_label
     value_start, value_place, value_end = value.start_node, value.place, value.end_label

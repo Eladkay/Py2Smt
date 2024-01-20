@@ -1,6 +1,8 @@
+import ast
 import functools
 from typing import override, List, Self
 
+from common import syntactic_replace, generalized_syntactic_replace
 from symbolic_interp import State
 
 
@@ -19,7 +21,7 @@ class Action:
     def __hash__(self):
         raise NotImplementedError()
 
-    def _combine_like_actions(self, other: Self) -> 'Action':
+    def _combine_actions(self, other: 'Action') -> 'Action':
         return CompositeAction.of(self, other)
 
 
@@ -37,8 +39,12 @@ class _NoAction(Action):
         return isinstance(other, _NoAction)
 
     @override
-    def _combine_like_actions(self, other: Self) -> Action:
+    def _combine_actions(self, other: Action) -> Action:
         return other
+
+    @override
+    def __str__(self):
+        return "nop"
 
 
 NoAction = _NoAction()
@@ -48,6 +54,7 @@ class AssignAction(Action):
 
     @staticmethod
     def of(var: str, value: str):
+        assert isinstance(var, str) and isinstance(value, str)
         return AssignAction({var: value})
 
     def __init__(self, assignment: dict):
@@ -65,20 +72,36 @@ class AssignAction(Action):
         return isinstance(other, AssignAction) and self.assignment == other.assignment
 
     @override
-    def _combine_like_actions(self, other: Self) -> Action:
+    def _combine_actions(self, other: Action) -> Action:
         # Assignments are simultaneous, so combining them requires
         # incorporating relevant values from the first assignment into
         # the second assignment.
-        assignment = {}
-        for key in other.assignment:
-            value = other.assignment[key]
-            for existing_assignment in self.assignment:
-                value = value.replace(existing_assignment, f"({self.assignment[existing_assignment]})")
-            assignment[key] = value
-        for key in self.assignment:
-            if key not in assignment:
-                assignment[key] = self.assignment[key]
-        return AssignAction(assignment)
+        # TODO: everything involving heaps doesn't work because there isn't a direct modification
+        if isinstance(other, AssignAction) and all("deref" not in it for it in other.assignment.values()):
+            assignment = {}
+            for key in other.assignment:
+                parsed_assignment = {assgn: ast.parse(value).body[0].value for assgn, value in self.assignment.items()}
+                value = generalized_syntactic_replace(parsed_assignment, ast.parse(other.assignment[key]).body[0])
+                assignment[key] = ast.unparse(value)
+            for key in self.assignment:
+                if key not in assignment:
+                    assignment[key] = self.assignment[key]
+            return AssignAction(assignment)
+        if isinstance(other, CompositeAction):
+            return CompositeAction.of(*other.actions, self)
+        if other == NoAction:
+            return self
+        if isinstance(other, AssumeAction):
+            # Try flipping the order of the actions
+            parsed_assumption = ast.parse(other.expression).body[0].value
+            parsed_assignment = {assgn: ast.parse(value).body[0].value for assgn, value in self.assignment.items()}
+            value = generalized_syntactic_replace(parsed_assignment, parsed_assumption)
+            return CompositeAction.of(AssumeAction(ast.unparse(value)), self)
+        return super()._combine_actions(other)
+
+    @override
+    def __str__(self):
+        return f"assign({str(self.assignment)})"
 
 
 class AssumeAction(Action):
@@ -97,8 +120,18 @@ class AssumeAction(Action):
         return isinstance(other, AssumeAction) and self.expression == other.expression
 
     @override
-    def _combine_like_actions(self, other: Self) -> Action:
-        return AssumeAction(f"And({self.expression}, {other.expression})")
+    def __str__(self):
+        return f"assume({self.expression})"
+
+    @override
+    def _combine_actions(self, other: Action) -> Action:
+        if isinstance(other, CompositeAction):
+            return CompositeAction.of(*other.actions, self)
+        if other == NoAction:
+            return self
+        if isinstance(other, AssumeAction):
+            return AssumeAction(f"And({self.expression}, {other.expression})")
+        return super()._combine_actions(other)
 
 
 class CompositeAction(Action):
@@ -119,12 +152,20 @@ class CompositeAction(Action):
     def __hash__(self):
         return hash(f"CompositeAction({self.actions})")
 
+    @override
+    def __str__(self):
+        return f"[{', '.join(str(action) for action in self.actions)}]"
+
     def __eq__(self, other):
         return isinstance(other, CompositeAction) and self.actions == other.actions
 
     @override
-    def _combine_like_actions(self, other: Self) -> 'Action':
-        return CompositeAction(self.actions + other.actions)
+    def _combine_actions(self, other: Action) -> 'Action':
+        if isinstance(other, CompositeAction):
+            return CompositeAction(self.actions + other.actions)
+        if other == NoAction:
+            return self
+        return super()._combine_actions(other)
 
     def simplify(self) -> 'Action':
         actions = self.actions
@@ -148,10 +189,13 @@ class CompositeAction(Action):
         partitions.append(current_partition)
         assert all(len(it) > 0 for it in partitions)
 
-        new_actions = [functools.reduce(lambda x, y: x._combine_like_actions(y), partition)
-                       for partition in partitions]
+        new_actions = [functools.reduce(lambda x, y: x._combine_actions(y), partition)
+                       for partition in partitions]  # todo, maybe don't combine just within partitions?
 
-        ret = CompositeAction(new_actions)
+        if len(new_actions) == 1:
+            ret = new_actions[0]
+        else:
+            ret = CompositeAction(new_actions)
         if ret == self:
             return self
         return ret.simplify()

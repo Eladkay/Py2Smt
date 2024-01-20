@@ -32,7 +32,7 @@ class MethodObject:
                             system)
 
     def __init__(self, name: str, tree: AST, args: List[str],
-                 cls: Union[Type, None], system: 'Py2Smt'):
+                 cls: Union[Type, None], system: 'Py2Smt', optimzation_level: int = 1):
         self.system = system
         self.name = name
         self.ast = tree
@@ -44,6 +44,7 @@ class MethodObject:
         self._sig = None
         self._cfg = None
         self._dispatcher = None
+        self.optimization_level = optimzation_level
 
     @property
     def sig(self) -> Signature:
@@ -58,6 +59,7 @@ class MethodObject:
             self._dispatcher = CodeGenerationDispatcher(self.cfg)
             self._dispatcher.compute_graph(self.ast)
             self._cfg.clean_cfg()
+            self._cfg.optimize_graph(self.optimization_level)
 
         return self._cfg
 

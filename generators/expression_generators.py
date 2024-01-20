@@ -10,7 +10,8 @@ from cfg import ControlFlowGraph
 from cfg_actions import AssignAction, AssumeAction, CompositeAction, NoAction
 from generators import misc_generators
 from generators.generators import AbstractCodeGenerator, handles, \
-    DecoratedDataNode, CodeGenerationDispatcher, syntactic_replace, DecoratedAst, DecoratedControlNode
+    DecoratedDataNode, CodeGenerationDispatcher, DecoratedAst, DecoratedControlNode
+from common import syntactic_replace
 from smt_helper import *
 
 
@@ -32,7 +33,7 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
                                                                      f"{get_or_create_pointer_by_name(NoneTypeName)}"
                                                                      f".ptr(0)"))
         else:
-            val = node.value
+            val = str(node.value)
             new_node = self.graph.add_node("pass")
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
@@ -83,9 +84,9 @@ class BinOpCodeGenerator(AbstractCodeGenerator):
             expr2 = f"Int2BV({expr2}, 64)"
             self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"BV2Int({expr1} {op_string} {expr2})"))
         elif isinstance(node.op, ast.Div):
-            if isinstance(expr1, int):
+            if isinstance(expr1, int) or expr1.isnumeric():
                 expr1 = f"IntVal({expr1})"
-            if isinstance(expr2, int):
+            if isinstance(expr2, int) or expr2.isnumeric():
                 expr2 = f"IntVal({expr2})"
             self.graph.add_edge(new_node, new_label, AssignAction.of(new_var, f"ToReal({expr1}) / ToReal({expr2})"))
         else:
