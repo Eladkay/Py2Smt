@@ -165,7 +165,7 @@ class CompositeAction(Action):
             return CompositeAction(self.actions + other.actions)
         if other == NoAction:
             return self
-        return super()._combine_actions(other).simplify()
+        return super()._combine_actions(other)
 
     def simplify(self) -> 'Action':
         def inline_composites(acts):

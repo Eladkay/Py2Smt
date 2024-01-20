@@ -1,6 +1,7 @@
 import functools
 import re
 import typing
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Tuple, List, Any, Type
 
@@ -8,7 +9,7 @@ import z3
 from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
                 ArraySortRef, ArithSortRef, SeqSortRef, Or, BoolSortRef, SortRef, ArraySort, SeqSort)
 
-from cfg_actions import Action, NoAction, CompositeAction
+from cfg_actions import Action, NoAction, CompositeAction, AssumeAction, AssignAction
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
     get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType, BoolType
 from symbolic_interp import State, Signature
@@ -60,6 +61,8 @@ class ControlFlowGraph:
         self.cls = cls
         self.nodes = set()
         self.edges = set()
+        self._outgoing_edges = defaultdict(set)
+        self._ingoing_edges = defaultdict(set)
         self.labels = set()
 
         self.start = self.add_node("start")
@@ -199,7 +202,14 @@ class ControlFlowGraph:
         assert not isinstance(src, Label)
         edge = ControlFlowEdge(src, dst, action)
         self.edges.add(edge)
+        self._outgoing_edges[src].add(edge)
+        self._ingoing_edges[dst].add(edge)
         return edge
+
+    def remove_edge(self, edge: ControlFlowEdge):
+        self.edges.remove(edge)
+        self._outgoing_edges[edge.source].remove(edge)
+        self._ingoing_edges[edge.target].remove(edge)
 
     def fresh_label(self):
         label = Label(len(self.labels))
@@ -209,7 +219,7 @@ class ControlFlowGraph:
     def bp(self, label: Label, node: typing.Union[Label, ControlFlowNode]):
         to_remove = []
         to_add = []
-        for edge in self.edges:
+        for edge in self.edges:  # todo can be made more efficient?
             if edge.source == label == edge.target:
                 to_remove.append(edge)
                 to_add.append(ControlFlowEdge(node, node, edge.action))
@@ -220,9 +230,9 @@ class ControlFlowGraph:
                 to_remove.append(edge)
                 to_add.append(ControlFlowEdge(edge.source, node, edge.action))
         for edge in to_remove:
-            self.edges.remove(edge)
+            self.remove_edge(edge)
         for edge in to_add:
-            self.edges.add(edge)
+            self.add_edge(edge.source, edge.target, edge.action)
 
     def bp_list(self, lst: List[Tuple[typing.Union[Label, ControlFlowNode], Label]]):
         for i in range(len(lst) - 1):
@@ -236,9 +246,8 @@ class ControlFlowGraph:
             return
         if node == end_node:
             yield path
-        for edge in self.edges:
-            if edge.source == node:
-                yield from self._dfs(edge.target, depth_bound - 1, end_node, path + [edge])
+        for edge in self._outgoing_edges[node]:
+            yield from self._dfs(edge.target, depth_bound - 1, end_node, path + [edge])
 
     def dfs(self, depth_bound: int, end_node: ControlFlowNode = None):
         if end_node is None:
@@ -284,7 +293,7 @@ class ControlFlowGraph:
             if isinstance(edge.source, Label) or isinstance(edge.target, Label):
                 to_remove.append(edge)
         for edge in to_remove:
-            self.edges.remove(edge)
+            self.remove_edge(edge)
         self.labels = []
 
         # remove unreachable nodes
@@ -292,17 +301,16 @@ class ControlFlowGraph:
         to_visit = [self.start]
         while to_visit:
             node = to_visit.pop()
-            for edge in self.edges:
-                if edge.source == node:
-                    if edge.target not in reachable:
-                        reachable.add(edge.target)
-                        to_visit.append(edge.target)
+            for edge in self._outgoing_edges[node]:
+                if edge.target not in reachable:
+                    reachable.add(edge.target)
+                    to_visit.append(edge.target)
         self.nodes = list(reachable)
 
         # remove skip nodes
         for _ in self.nodes:
             self._clean_skip()
-        self.nodes = set(filter(lambda x: x.label != ControlFlowGraph.PASS, self.nodes))
+        self.nodes = {node for node in self.nodes if node.label != ControlFlowGraph.PASS}
 
         # clean useless edges (must be done after skip removal)
         to_remove = []
@@ -310,38 +318,44 @@ class ControlFlowGraph:
             if edge.source not in self.nodes or edge.target not in self.nodes:
                 to_remove.append(edge)
         for edge in to_remove:
-            self.edges.remove(edge)
+            if edge in self.edges:
+                self.remove_edge(edge)
 
     def optimize_graph(self, passes=1):
         for _ in range(passes):
+            self.clean_cfg()
             self._combine_paths()
             self._reduce_diamonds()
+            self.clean_cfg()
+
+    def _in_degree(self, node: ControlFlowNode):
+        return len(self._ingoing_edges[node])
+
+    def _out_degree(self, node: ControlFlowNode):
+        return len(self._outgoing_edges[node])
 
     def _combine_paths(self):
         # TODO: this needs someone who understands algorithms to give it a full rewrite.
-        def in_degree(n):
-            return sum(1 for edge in self.edges if edge.target == n)
 
-        def out_degree(n):
-            return sum(1 for edge in self.edges if edge.source == n)
-
-        nodes = [node for node in self.nodes if in_degree(node) <= 1 and out_degree(node) <= 1]
+        nodes = [node for node in self.nodes if self._in_degree(node) <= 1 and self._out_degree(node) <= 1]
         paths = []
         for node in nodes:
             if node in [self.start, self.end]:
                 continue
             path = ()
             curr = node
-            while in_degree(curr) <= 1 and out_degree(curr) <= 1:
+            while self._in_degree(curr) <= 1 and self._out_degree(curr) <= 1:
                 path += (curr,)
-                nexts = [edge.target for edge in self.edges if edge.source == curr]
+                nexts = [edge.target for edge in self._outgoing_edges[curr]]
                 if len(nexts) == 0:
                     break
                 curr = nexts[0]
                 if curr in path:
                     break
-            if len(path) >= 2 and any(edge.source == path[-1] for edge in self.edges):
+            if len(path) >= 2 and self._out_degree(path[-1]) > 0:
                 paths.append(path)
+            elif len(path) > 2 and self._out_degree(path[-2]) > 0:
+                paths.append(path[:-1])
 
         maximal_path_containing_node = {}
         for path in paths:
@@ -352,20 +366,24 @@ class ControlFlowGraph:
 
         paths_to_shrink = set(maximal_path_containing_node.values())
         for path in paths_to_shrink:
-            edges = [edge for node in path for edge in [ed for ed in self.edges if ed.source == node]]
+            edges = [edge for node in path for edge in self._outgoing_edges[node]]
             actions = [edge.action for edge in edges]
             new_action = CompositeAction(actions).simplify()
             new_node = self.add_node(f"[{', \n'.join([node.label for node in path])}]")
-            ingoing_edges = [edge for edge in self.edges if edge.target == path[0]]
+            ingoing_edges = list(self._ingoing_edges[path[0]])
             if ingoing_edges:
-                ingoing_edges[0].target = new_node
-            outgoing_edges = [edge for edge in self.edges if edge.source == path[-1]]
+                edge = ingoing_edges[0]
+                edge.target = new_node
+                self._ingoing_edges[new_node].add(ingoing_edges[0])
+            outgoing_edges = list(self._outgoing_edges[path[-1]])
             if outgoing_edges:
-                outgoing_edges[0].source = new_node
-                outgoing_edges[0].action = new_action
+                edge = outgoing_edges[0]
+                edge.source = new_node
+                edge.action = new_action
+                self._outgoing_edges[new_node].add(outgoing_edges[0])
             for edge in edges:
-                if edge not in outgoing_edges:
-                    self.edges.remove(edge)
+                if edge not in outgoing_edges and edge in self.edges:
+                    self.remove_edge(edge)
             for node in path:
                 if node in self.nodes:
                     self.nodes.remove(node)
@@ -373,8 +391,46 @@ class ControlFlowGraph:
                 self.end = new_node
 
     def _reduce_diamonds(self):
-        # TODO
-        pass
+        """ You and I, we're like diamonds in the graph. """
+
+        # Find diamond head candidates
+        diamonds = []
+        for candidate in [node for node in self.nodes if self._out_degree(node) == 2]:
+            outgoing_edges = self._outgoing_edges[candidate]
+            action1, action2 = [edge.action for edge in outgoing_edges]
+            next_node1, next_node2 = [edge.target for edge in outgoing_edges]
+
+            if not isinstance(action1, AssumeAction) or not isinstance(action2, AssumeAction):
+                continue
+            if (action1.expression != f"Not({action2.expression})"
+                    and action2.expression != f"Not({action1.expression})"):
+                continue
+            expression = action1.expression if action1.expression != f"Not({action2.expression})" \
+                else action2.expression
+            if self._out_degree(next_node1) != 1 or self._out_degree(next_node2) != 1:
+                continue
+            bottom_node1, bottom_node2 = ([edge.target for edge in self._outgoing_edges[next_node1]][0],
+                                          [edge.target for edge in self._outgoing_edges[next_node2]][0])
+            if bottom_node1 != bottom_node2:
+                continue
+            diamonds.append((candidate, expression, list(self._outgoing_edges[next_node1])[0],
+                             list(self._outgoing_edges[next_node2])[0], bottom_node1))
+        for head, fork_exp, option1, option2, bottom in diamonds:
+            # For now, we only support assignments to the same variable. TODO?
+            if not isinstance(option1.action, AssignAction) or not isinstance(option2.action, AssignAction):
+                continue
+            if option1.action.assignment.keys() != option2.action.assignment.keys():
+                continue
+            new_assignment = {k: f"If({fork_exp}, {option1.action.assignment[k]}, {option2.action.assignment[k]})"
+                              for k in option1.action.assignment.keys()}
+            self.remove_edge(option1)
+            self.remove_edge(option2)
+            for edge in list(self._outgoing_edges[head]):
+                self.remove_edge(edge)  # there should be exactly two
+            self.add_edge(head, bottom, AssignAction(new_assignment))
+            self.nodes.remove(option1.source)
+            self.nodes.remove(option2.source)
+
 
     def export_to_dot(self):
         from graphviz import Digraph
@@ -391,16 +447,16 @@ class ControlFlowGraph:
         to_add = set()
         for edge1 in self.edges:
             if edge1.target.label == ControlFlowGraph.PASS:
-                for edge2 in self.edges:
-                    if edge2.source == edge1.target:
-                        if edge1.action == NoAction:
-                            action = edge2.action
-                        elif edge2.action == NoAction:
-                            action = edge1.action
-                        else:
-                            action = CompositeAction.of(edge1.action, edge2.action)
-                        to_add.add(ControlFlowEdge(edge1.source, edge2.target, action))
-        self.edges.update(to_add)
+                for edge2 in self._outgoing_edges[edge1.target]:
+                    if edge1.action == NoAction:
+                        action = edge2.action
+                    elif edge2.action == NoAction:
+                        action = edge1.action
+                    else:
+                        action = CompositeAction.of(edge1.action, edge2.action)
+                    to_add.add(ControlFlowEdge(edge1.source, edge2.target, action))
+        for edge in to_add:
+            self.add_edge(edge.source, edge.target, edge.action)
 
     def get_signature(self):
         heap_pointers = {get_heap_pointer_name(it): IntType for it in self.system.class_types.values()}

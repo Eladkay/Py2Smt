@@ -269,7 +269,7 @@ class Py2SmtBasicTests(SmtTestCase):
                                   And(state1["x"] == 2, state1.eval(entry.cfg.return_var) == 2)))
 
     def test_ifelse(self):
-        smt = Py2Smt([BasicTest])
+        smt = Py2Smt([BasicTest], optimization_level=2)
         entry = smt.get_entry_by_name("ifelse")
         self.assertEqual(entry.args, ["self", "param"])
         state0, state1 = entry.make_state(), entry.make_state("'")

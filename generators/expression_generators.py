@@ -433,7 +433,7 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
         self.graph.var_count = new_cfg.var_count
 
-        new_cfg.clean_cfg()
+        new_cfg.optimize_graph(self.graph.system.optimization_level)
 
         func_start, func_end = self.graph.add_all(new_cfg)
         start = func_start

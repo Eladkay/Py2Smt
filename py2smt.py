@@ -21,7 +21,7 @@ class MethodObject:
 
     @staticmethod
     def get_from_method(method: Callable, system: 'Py2Smt',
-                        cls: Union[Type, None] = None) -> 'MethodObject':
+                        cls: Union[Type, None] = None, optimization_level: int = 1) -> 'MethodObject':
         cls = cls if cls else vars(sys.modules[method.__module__])[method.__qualname__.split('.')[0]]
         if not isinstance(cls, Type):
             cls = None
@@ -29,7 +29,8 @@ class MethodObject:
                             ast.parse(dedent(inspect.getsource(method))),
                             inspect.getfullargspec(method).args,
                             cls,
-                            system)
+                            system,
+                            optimization_level)
 
     def __init__(self, name: str, tree: AST, args: List[str],
                  cls: Union[Type, None], system: 'Py2Smt', optimzation_level: int = 1):
@@ -58,7 +59,6 @@ class MethodObject:
             self._cfg = ControlFlowGraph(self.system, self.ast.body[0].name, self.cls)
             self._dispatcher = CodeGenerationDispatcher(self.cfg)
             self._dispatcher.compute_graph(self.ast)
-            self._cfg.clean_cfg()
             self._cfg.optimize_graph(self.optimization_level)
 
         return self._cfg
@@ -77,11 +77,12 @@ class MethodObject:
 
 
 class Py2Smt:
-    def __init__(self, classes: List[Type], depth_bound: int = 20):
+    def __init__(self, classes: List[Type], *, depth_bound: int = 20, optimization_level: int = 1):
         self.classes = classes
         self.class_fields = {}
         self.class_types = {}
         self.depth_bound = depth_bound
+        self.optimization_level = optimization_level
 
         self._abstract_types = {}
         self._discover_class_generic_vars()
@@ -89,7 +90,7 @@ class Py2Smt:
 
         # methods from the classes
         self.methods = {(cls.__name__, method):
-                            MethodObject.get_from_method(getattr(cls, method), self, cls)
+                            MethodObject.get_from_method(getattr(cls, method), self, cls, self.optimization_level)
                         for cls in classes
                         for method in set(dir(cls)) - set(dir(object))
                         if (not method.startswith("__") and isinstance(getattr(cls, method), Callable))}
