@@ -26,12 +26,10 @@ class ConstantCodeGenerator(AbstractCodeGenerator):
             new_label = self.graph.fresh_label()
             self.graph.add_edge(new_node, new_label)
         elif node.value is None:
-            val = self.graph.fresh_var(get_or_create_pointer_by_name(NoneTypeName))
+            val = self.graph.fresh_var(NoneType)
             new_node = self.graph.add_node(f"{val} = None")
             new_label = self.graph.fresh_label()
-            self.graph.add_edge(new_node, new_label, AssignAction.of(val,
-                                                                     f"{get_or_create_pointer_by_name(NoneTypeName)}"
-                                                                     f".ptr(0)"))
+            self.graph.add_edge(new_node, new_label, AssignAction.of(val,f"{NoneType}.ptr(0)"))
         else:
             val = str(node.value)
             new_node = self.graph.add_node("pass")
@@ -184,8 +182,7 @@ class CompareCodeGenerator(AbstractCodeGenerator):
                 if not is_pointer_type(right_type):
                     self.type_error("Cannot check identicality of non-pointer types!")
 
-                if right_type != get_or_create_pointer_by_name(NoneTypeName) and \
-                        right_type != self.graph.get_type(var_left):
+                if right_type != NoneType and right_type != self.graph.get_type(var_left):
                     components.append((start_left, end_right, f"False"))
                 else:
                     components.append((start_left, end_right, f"id({var_left}) == id({var_right})"))
@@ -406,7 +403,6 @@ class FunctionCallCodeGenerator(AbstractCodeGenerator):
 
         replaced_args = FunctionCallCodeGenerator._syntactic_param_replace(tree, params,
                                                                            [_ast.Name(it) for it in exprs])
-        # replaced_args.body[0].args_old = replaced_args.body[0].args  # for memory safety, todo
         replaced_args.body[0].args = ast.arguments()
 
         local_vars = list(it for it in called_function.cfg.types.keys() if it not in params)

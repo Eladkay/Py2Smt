@@ -11,7 +11,7 @@ from z3 import (ExprRef, simplify, And, IntSort, BoolSort, StringSort,
 
 from cfg_actions import Action, NoAction, CompositeAction, AssumeAction, AssignAction
 from smt_helper import IntType, get_or_create_pointer, get_heap_pointer_name, get_heap_name, \
-    get_or_create_pointer_by_name, NoneTypeName, FloatType, StringType, BoolType
+    FloatType, StringType, BoolType, NoneType
 from symbolic_interp import State, Signature
 
 
@@ -129,7 +129,7 @@ class ControlFlowGraph:
                 (value.endswith('"') or value.endswith("\\\""))):
             return StringType
         if value == "None":
-            return get_or_create_pointer_by_name(NoneTypeName)
+            return NoneType
         try:
             return eval(value).sort()
         except Exception:

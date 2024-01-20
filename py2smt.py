@@ -10,8 +10,7 @@ from z3 import (z3, DatatypeSortRef, IntSort, ArraySort, SetSort, SortRef, SeqSo
 
 from generators.generators import CodeGenerationDispatcher
 from smt_helper import get_or_create_optional_type, IntType, BoolType, StringType, get_heap_pointer_name, get_heap_name, \
-    is_pointer_type, get_or_create_pointer_by_name, \
-    get_pointed_type, NoneTypeName, HELPER_SMT_FUNCTIONS, FloatType
+    is_pointer_type, get_or_create_pointer_by_name, get_pointed_type, HELPER_SMT_FUNCTIONS, FloatType, NoneType
 from symbolic_interp import Signature, State
 import stdlib
 from cfg import ControlFlowGraph
@@ -194,12 +193,11 @@ class Py2Smt:
         base_types = {"int": IntType, "bool": BoolType, "str": StringType, "float": FloatType}
         if typename in base_types:
             return base_types[typename]
-        none_type = get_or_create_pointer_by_name(NoneTypeName)
-        if typename == none_type.name():
-            return none_type
+        if typename == NoneType.name():  # this is *not* NoneTypeName
+            return NoneType
         if typename in [cls.__name__ for cls in self.classes]:
             return get_or_create_pointer_by_name(typename)
-        if typename in self.generic_vars:  # todo: generic vars are global
+        if typename in self.generic_vars:  # todo: generic vars are global, also what about instantiation?
             return z3.DeclareSort(typename)  # todo cache this?
         raise ValueError(f"Unknown type {typename}")
 

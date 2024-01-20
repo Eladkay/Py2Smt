@@ -8,7 +8,7 @@ from z3 import *  # pylint: disable=unused-wildcard-import,wildcard-import
 # pylint: disable=unused-import
 from smt_helper import upcast_expr, OPTIONAL_TYPES, singleton_list, POINTER_TYPES, get_heap_name, \
     get_or_create_pointer_by_name, get_heap_pointer_name, is_pointer_type, get_pointed_type, upcast_pointer, \
-    NoneTypeName, get_or_create_pointer, try_upcast
+    get_or_create_pointer, try_upcast
 
 
 class Signature:

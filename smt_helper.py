@@ -11,7 +11,6 @@ IntType = z3.IntSort()
 StringType = z3.StringSort()
 BoolType = z3.BoolSort()
 FloatType = z3.RealSort()
-NoneTypeName = "NoneType"  # todo: compute the type itself only once
 
 
 def upcast_pointer(ptr1: DatatypeRef, target_pointer_sort: DatatypeSortRef, source_heap: ArrayRef) -> ExprRef:
@@ -107,6 +106,10 @@ def get_or_create_pointer_by_name(type_name: str) -> DatatypeSortRef:
     return option
 
 
+NoneTypeName = "NoneType"
+NoneType = get_or_create_pointer_by_name(NoneTypeName)
+
+
 def singleton_list(t: Any) -> SeqRef:
     if isinstance(t, str):
         t = StringVal(t)
@@ -143,7 +146,7 @@ def try_upcast(locals: dict, new_values: dict, class_types: dict,
         assert isinstance(target_sort, DatatypeSortRef)
         # latter is for type checker, actually implied by the first one
 
-        if computed_value.sort() == get_or_create_pointer_by_name(NoneTypeName):
+        if computed_value.sort() == NoneType:
             upcast_value = target_sort.constructor(0)(0)
         else:
             fb = {get_or_create_pointer(ty): ty for ty in class_types.values()}

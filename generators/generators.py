@@ -107,7 +107,7 @@ class CodeGenerationDispatcher:
         # Memory safety assumption
         new_tree = ast.Module(body=deepcopy(tree.body), type_ignores=tree.type_ignores)
         if self.graph.name != "is_valid":
-            args = tree.body[0].args.args if hasattr(tree.body[0].args, "args") else []  # todo old_args?
+            args = tree.body[0].args.args if hasattr(tree.body[0].args, "args") else []
             for arg in args:
                 if arg.arg != "self":
                     new_tree.body[0].body.insert(0,

@@ -76,7 +76,6 @@ class AssignAction(Action):
         # Assignments are simultaneous, so combining them requires
         # incorporating relevant values from the first assignment into
         # the second assignment.
-        # TODO: everything involving heaps doesn't work because there isn't a direct modification
         if isinstance(other, AssignAction) and all("deref" not in it for it in other.assignment.values()):
             assignment = {}
             for key in other.assignment:
